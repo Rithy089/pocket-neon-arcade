@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #030408;
+    color: #e2e8f0;
+    font-family: 'Chakra Petch', sans-serif;
+  }
+}
+
+/* CRT Scanlines and Retro Screen Effects */
+.crt-screen {
+  position: relative;
+  overflow: hidden;
+}
+
+.crt-screen::before {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.45) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.04), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.04));
+  z-index: 20;
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
+}
+
+.crt-screen::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: radial-gradient(circle at center, transparent 65%, rgba(0, 0, 0, 0.8) 100%);
+  z-index: 21;
+  pointer-events: none;
+}
+
+.font-pixel {
+  font-family: 'Press Start 2P', monospace;
+}
+
+.font-terminal {
+  font-family: 'VT323', monospace;
+}
+
+/* Neon Glow Utilities */
+.neon-glow-pink {
+  text-shadow: 0 0 5px #ff007f, 0 0 10px #ff007f, 0 0 20px #ff007f;
+}
+
+.neon-glow-cyan {
+  text-shadow: 0 0 5px #00f0ff, 0 0 10px #00f0ff, 0 0 20px #00f0ff;
+}
+
+.neon-glow-green {
+  text-shadow: 0 0 5px #39ff14, 0 0 10px #39ff14, 0 0 20px #39ff14;
+}
+
+.neon-glow-yellow {
+  text-shadow: 0 0 5px #ffe600, 0 0 10px #ffe600, 0 0 20px #ffe600;
+}
+
+.neon-border-cyan {
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.5), inset 0 0 12px rgba(0, 240, 255, 0.2);
+}
+
+.neon-border-pink {
+  box-shadow: 0 0 12px rgba(255, 0, 127, 0.5), inset 0 0 12px rgba(255, 0, 127, 0.2);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #090a16;
+}
+::-webkit-scrollbar-thumb {
+  background: #00f0ff55;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00f0ffaa;
+}
