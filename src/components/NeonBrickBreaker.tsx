@@ -432,7 +432,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
 
               if (brick.currentHits >= brick.hitsRequired) {
                 // Destroy brick
-                destroyBrick(j, brick);
+                destroyBrick(brick);
               }
               break;
             }
@@ -444,7 +444,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         }
 
         // Helper: Destroy Brick
-        function destroyBrick(brickIndex: number, brick: Brick) {
+        function destroyBrick(brick: Brick) {
           s.combo++;
           const comboMult = Math.min(s.combo, 10);
           const pointsEarned = brick.scoreValue * comboMult;
@@ -464,6 +464,9 @@ export const NeonBrickBreaker: React.FC<Props> = ({
           addFloatingText(comboLabel, brick.x + brick.width / 2, brick.y, brick.color);
           soundManager.playCombo(comboMult);
 
+          const destroyedIds = new Set<string>();
+          destroyedIds.add(brick.id);
+
           // Explosive Brick Effect
           if (brick.type === 'explosive') {
             s.shake = 12;
@@ -472,9 +475,9 @@ export const NeonBrickBreaker: React.FC<Props> = ({
 
             // Damage neighboring bricks
             const radius = 95;
-            for (let k = s.bricks.length - 1; k >= 0; k--) {
-              if (k === brickIndex) continue;
+            for (let k = 0; k < s.bricks.length; k++) {
               const nb = s.bricks[k];
+              if (nb.id === brick.id) continue;
               const dist = Math.hypot(
                 (nb.x + nb.width / 2) - (brick.x + brick.width / 2),
                 (nb.y + nb.height / 2) - (brick.y + brick.height / 2)
@@ -484,7 +487,10 @@ export const NeonBrickBreaker: React.FC<Props> = ({
                 if (nb.currentHits >= nb.hitsRequired) {
                   s.score += nb.scoreValue;
                   spawnParticles(nb.x + nb.width / 2, nb.y + nb.height / 2, nb.color, 14);
-                  s.bricks.splice(k, 1);
+                  destroyedIds.add(nb.id);
+                  if (nb.powerUpDrop) {
+                    spawnPowerUp(nb.x + nb.width / 2, nb.y + nb.height / 2, nb.powerUpDrop);
+                  }
                 }
               }
             }
@@ -497,7 +503,8 @@ export const NeonBrickBreaker: React.FC<Props> = ({
             spawnPowerUp(brick.x + brick.width / 2, brick.y + brick.height / 2, brick.powerUpDrop);
           }
 
-          s.bricks.splice(brickIndex, 1);
+          // Safely remove all destroyed bricks by ID with zero index corruption
+          s.bricks = s.bricks.filter((b) => !destroyedIds.has(b.id));
 
           // Check Level Clear or Campaign Victory
           if (s.bricks.length === 0) {
@@ -742,7 +749,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
               soundManager.playBrickHit(brick.type === 'armored');
 
               if (brick.currentHits >= brick.hitsRequired) {
-                destroyBrick(bIdx, brick);
+                destroyBrick(brick);
               } else {
                 spawnParticles(ball.x, ball.y, brick.color, 6);
               }
