@@ -318,6 +318,44 @@ class SoundManager {
       osc.stop(noteTime + 0.25);
     });
   }
+
+  // Grand arcade victory anthem (triumphant multi-chord fanfare)
+  public playGameWin() {
+    if (this.isMuted) return;
+    this.initCtx();
+    if (!this.ctx || !this.masterGain) return;
+
+    const fanfare = [
+      { freq: 523.25, dur: 0.12, type: 'triangle' as OscillatorType }, // C5
+      { freq: 659.25, dur: 0.12, type: 'triangle' as OscillatorType }, // E5
+      { freq: 783.99, dur: 0.12, type: 'triangle' as OscillatorType }, // G5
+      { freq: 1046.50, dur: 0.22, type: 'triangle' as OscillatorType }, // C6
+      { freq: 880.00, dur: 0.12, type: 'square' as OscillatorType }, // A5
+      { freq: 1046.50, dur: 0.14, type: 'square' as OscillatorType }, // C6
+      { freq: 1174.66, dur: 0.16, type: 'square' as OscillatorType }, // D6
+      { freq: 1318.51, dur: 0.5, type: 'triangle' as OscillatorType }, // E6 held high
+    ];
+
+    let t = this.ctx.currentTime + 0.05;
+    fanfare.forEach((note) => {
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
+
+      osc.type = note.type;
+      osc.frequency.setValueAtTime(note.freq, t);
+
+      gain.gain.setValueAtTime(0.35, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + note.dur);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+
+      osc.start(t);
+      osc.stop(t + note.dur);
+
+      t += note.dur * 0.88;
+    });
+  }
 }
 
 export const soundManager = new SoundManager();

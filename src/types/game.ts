@@ -96,4 +96,4 @@ export interface GameStats {
   bricksCleared: number;
 }
 
-export type GameState = 'READY' | 'PLAYING' | 'PAUSED' | 'GAMEOVER' | 'LEVEL_CLEAR';
+export type GameState = 'READY' | 'PLAYING' | 'PAUSED' | 'GAMEOVER' | 'LEVEL_CLEAR' | 'VICTORY';

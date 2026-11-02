@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Ball, Paddle, Brick, PowerUp, Particle, FloatingText, LaserBeam, GameState, PowerUpType } from '../types/game';
-import { generateBricksForLevel } from '../utils/levels';
+import { generateBricksForLevel, TOTAL_CAMPAIGN_LEVELS, getLevelName } from '../utils/levels';
 import { soundManager } from '../utils/audio';
-import { Play, Pause, RotateCcw, Volume2, VolumeX, Shield, Zap, Sparkles, Heart, Crosshair } from 'lucide-react';
+import { Play, Pause, RotateCcw, Volume2, VolumeX, Shield, Zap, Sparkles, Heart, Crosshair, Trophy, Crown } from 'lucide-react';
 
 interface Props {
   onScoreUpdate: (score: number) => void;
@@ -44,6 +44,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
   });
   const [lives, setLives] = useState<number>(3);
   const [level, setLevel] = useState<number>(1);
+  const [isEndlessMode, setIsEndlessMode] = useState<boolean>(false);
   const [activePowerUps, setActivePowerUps] = useState<{
     laser: number;
     widePaddle: number;
@@ -57,6 +58,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     highScore: number;
     lives: number;
     level: number;
+    isEndlessMode: boolean;
     combo: number;
     shake: number;
     balls: Ball[];
@@ -80,6 +82,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     highScore: highScore,
     lives: 3,
     level: 1,
+    isEndlessMode: false,
     combo: 0,
     shake: 0,
     balls: [],
@@ -180,6 +183,8 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     if (!keepStats) {
       s.score = 0;
       s.lives = 3;
+      s.isEndlessMode = false;
+      setIsEndlessMode(false);
       setScore(0);
       setLives(3);
     }
@@ -301,7 +306,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         togglePause();
       }
       if (e.key === 'r' || e.key === 'R') {
-        if (s.gameState === 'GAMEOVER' || s.gameState === 'LEVEL_CLEAR') {
+        if (s.gameState === 'GAMEOVER' || s.gameState === 'LEVEL_CLEAR' || s.gameState === 'VICTORY') {
           restartGame();
         }
       }
@@ -494,12 +499,49 @@ export const NeonBrickBreaker: React.FC<Props> = ({
 
           s.bricks.splice(brickIndex, 1);
 
-          // Check Level Clear
+          // Check Level Clear or Campaign Victory
           if (s.bricks.length === 0) {
-            s.gameState = 'LEVEL_CLEAR';
-            setGameState('LEVEL_CLEAR');
-            soundManager.playLevelClear();
-            spawnParticles(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, '#39ff14', 60, 2);
+            if (s.level >= TOTAL_CAMPAIGN_LEVELS && !s.isEndlessMode) {
+              s.gameState = 'VICTORY';
+              setGameState('VICTORY');
+
+              const lifeBonus = s.lives * 1000;
+              const victoryBonus = 5000 + lifeBonus;
+              s.score += victoryBonus;
+              setScore(s.score);
+              callbacksRef.current.onScoreUpdate(s.score);
+
+              if (s.score > s.highScore) {
+                s.highScore = s.score;
+                setHighScore(s.score);
+                callbacksRef.current.onHighScoreUpdate(s.score);
+                localStorage.setItem('neon_arcade_highscore', s.score.toString());
+              }
+
+              soundManager.playGameWin();
+
+              // Multi-burst victory fireworks across the canvas
+              for (let c = 0; c < 8; c++) {
+                setTimeout(() => {
+                  if (stateRef.current.gameState === 'VICTORY') {
+                    const colors = ['#ffe600', '#ff007f', '#00f0ff', '#39ff14', '#bc13fe'];
+                    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                    spawnParticles(
+                      Math.random() * (CANVAS_WIDTH - 120) + 60,
+                      Math.random() * (CANVAS_HEIGHT * 0.45) + 60,
+                      randomColor,
+                      35,
+                      2.2
+                    );
+                  }
+                }, c * 320);
+              }
+            } else {
+              s.gameState = 'LEVEL_CLEAR';
+              setGameState('LEVEL_CLEAR');
+              soundManager.playLevelClear();
+              spawnParticles(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, '#39ff14', 60, 2);
+            }
           }
         }
 
@@ -1034,8 +1076,8 @@ export const NeonBrickBreaker: React.FC<Props> = ({
           </div>
 
           {/* Current Level */}
-          <div className="bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-neon-cyan/40 shadow-neon-cyan text-neon-cyan">
-            LVL {level}
+          <div className="bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-neon-cyan/40 shadow-neon-cyan text-neon-cyan text-[10px] sm:text-xs">
+            {isEndlessMode ? `OVERDRIVE ${level}` : `SECTOR ${level}/${TOTAL_CAMPAIGN_LEVELS}`}
           </div>
         </div>
 
@@ -1043,7 +1085,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         {gameState === 'READY' && (
           <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none z-30">
             <div className="bg-arcade-panel/95 border-2 border-neon-cyan p-6 rounded-2xl shadow-neon-cyan text-center max-w-sm mx-4 animate-bounce">
-              <h2 className="font-pixel text-neon-cyan text-sm mb-3">MISSION READY</h2>
+              <h2 className="font-pixel text-neon-cyan text-xs sm:text-sm mb-2">{getLevelName(level)}</h2>
               <p className="text-xs text-slate-300 font-mono mb-4 leading-relaxed">
                 Click canvas, tap FIRE, or press <span className="text-neon-pink font-bold">SPACE</span> to launch the neon ball!
               </p>
@@ -1121,6 +1163,72 @@ export const NeonBrickBreaker: React.FC<Props> = ({
               >
                 <Zap className="w-4 h-4" /> NEXT SECTOR ►
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* VICTORY / CAMPAIGN COMPLETE OVERLAY */}
+        {gameState === 'VICTORY' && (
+          <div className="absolute inset-0 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center z-40 p-4">
+            <div className="bg-arcade-panel border-2 border-neon-yellow p-6 sm:p-8 rounded-2xl shadow-[0_0_40px_rgba(255,230,0,0.4)] text-center max-w-md w-full animate-pulse-glow">
+              <div className="relative inline-block mb-3">
+                <Trophy className="w-16 h-16 text-neon-yellow mx-auto animate-bounce drop-shadow-[0_0_15px_#ffe600]" />
+                <Crown className="w-6 h-6 text-neon-pink absolute -top-2 -right-1 animate-pulse" />
+              </div>
+
+              <div className="text-[10px] font-pixel text-neon-pink tracking-widest uppercase mb-1">
+                ★ CAMPAIGN COMPLETED ★
+              </div>
+              <h2 className="font-pixel text-2xl text-transparent bg-clip-text bg-gradient-to-r from-neon-yellow via-neon-green to-neon-cyan mb-1">
+                YOU WIN!
+              </h2>
+              <div className="text-xs font-mono text-neon-cyan mb-4">
+                ARCADE CHAMPION — GRID CONQUERED!
+              </div>
+
+              <div className="h-0.5 bg-gradient-to-r from-neon-pink via-neon-yellow to-neon-cyan w-full my-3 opacity-70" />
+
+              {/* Victory Stats Grid */}
+              <div className="grid grid-cols-2 gap-3 my-4 text-center font-pixel text-xs bg-black/50 p-3 rounded-xl border border-slate-800">
+                <div>
+                  <span className="text-[9px] text-slate-400 block mb-0.5 font-mono">FINAL SCORE</span>
+                  <span className="text-base text-neon-yellow">{score}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-slate-400 block mb-0.5 font-mono">HIGH SCORE</span>
+                  <span className="text-base text-neon-cyan">{highScore}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-slate-400 block mb-0.5 font-mono">LIVES BONUS</span>
+                  <span className="text-sm text-neon-pink">+{lives * 1000}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-slate-400 block mb-0.5 font-mono">RANK</span>
+                  <span className="text-sm text-neon-green font-bold">
+                    {lives >= 3 ? 'S+ LEGEND' : lives === 2 ? 'A+ MASTER' : 'B CYBER KNIGHT'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2.5 mt-5">
+                <button
+                  onClick={restartGame}
+                  className="w-full py-3 bg-gradient-to-r from-neon-yellow to-neon-orange hover:opacity-95 text-arcade-dark font-pixel text-xs rounded-xl shadow-neon-yellow transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 font-bold"
+                >
+                  <RotateCcw className="w-4 h-4" /> PLAY AGAIN [R]
+                </button>
+
+                <button
+                  onClick={() => {
+                    stateRef.current.isEndlessMode = true;
+                    setIsEndlessMode(true);
+                    initLevel(level + 1, true);
+                  }}
+                  className="w-full py-2.5 bg-neon-purple/20 hover:bg-neon-purple/30 border border-neon-purple text-neon-purple font-pixel text-xs rounded-xl shadow-neon-purple transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <Zap className="w-4 h-4" /> ENTER INFINITE OVERDRIVE
+                </button>
+              </div>
             </div>
           </div>
         )}

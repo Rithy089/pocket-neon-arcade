@@ -11,9 +11,28 @@ const PALETTE = {
   red: { color: '#ff073a', glow: 'rgba(255, 7, 58, 0.8)' },
 };
 
+export const TOTAL_CAMPAIGN_LEVELS = 5;
+
+export function getLevelName(levelNumber: number): string {
+  switch (levelNumber) {
+    case 1:
+      return "SECTOR 1: CYBER WAVE";
+    case 2:
+      return "SECTOR 2: SPACE INVADER";
+    case 3:
+      return "SECTOR 3: DIAMOND FORTRESS";
+    case 4:
+      return "SECTOR 4: QUANTUM CORE";
+    case 5:
+      return "FINAL SECTOR: NEON OVERLORD";
+    default:
+      return `OVERDRIVE SECTOR ${levelNumber}`;
+  }
+}
+
 export function generateBricksForLevel(levelNumber: number, canvasWidth: number, topOffset = 70): Brick[] {
   const bricks: Brick[] = [];
-  const levelIdx = (levelNumber - 1) % 4;
+  const levelIdx = levelNumber <= TOTAL_CAMPAIGN_LEVELS ? levelNumber - 1 : (levelNumber - 1) % TOTAL_CAMPAIGN_LEVELS;
 
   const padding = 6;
   const marginTop = topOffset;
@@ -60,7 +79,7 @@ export function generateBricksForLevel(levelNumber: number, canvasWidth: number,
       "   CGPGC   ",
       "    CGC    "
     ];
-  } else {
+  } else if (levelIdx === 3) {
     // Level 4: QUANTUM CORE
     cols = 10;
     grid = [
@@ -70,6 +89,19 @@ export function generateBricksForLevel(levelNumber: number, canvasWidth: number,
       "GGGGGGGGGG",
       "PPPPPPPPPP",
       "YYYYYYYYYY"
+    ];
+  } else {
+    // Level 5: NEON OVERLORD (FINAL BOSS MATRIX)
+    cols = 11;
+    grid = [
+      "   A   A   ",
+      "  A EAE A  ",
+      " P AAAAA P ",
+      "PEE B B EEP",
+      " GPPPPPPPG ",
+      "  GGGGGGG  ",
+      "   CCCCC   ",
+      "    YYY    "
     ];
   }
 
