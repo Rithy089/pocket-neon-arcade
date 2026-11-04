@@ -1,80 +1,50 @@
-# 🕹️ Pocket Neon Arcade
+# Pocket Neon Arcade
 
-An interactive retro-futuristic mini-arcade cabinet in the browser featuring **Neon Brick Breaker**. Built with **React 18 + TypeScript + Vite + Tailwind CSS + Lucide React**.
+A responsive React + TypeScript arcade built with Vite, Tailwind CSS, HTML5 Canvas and procedural Web Audio. The current collection contains **Neon Brick Breaker**.
 
-![Pocket Neon Arcade Screenshot](https://raw.githubusercontent.com/Rithy089/pocket-neon-arcade/main/dist/assets/preview.png)
+## Play
 
----
+- PC: A/D or Left/Right move the paddle; mouse tracking also works. Space launches and fires, Shift/E activates Overdrive, P/Esc pauses, and R restarts.
+- Touch: drag anywhere on the playfield or use the thumbstick. A launches/fires; B activates a charged Overdrive. Swipe up or double tap the playfield for Overdrive.
+- Hold A or Space to keep firing while laser power is active. Independent touch pointers support moving and shooting together.
+- Menus and focus loss pause active gameplay. Closing a menu leaves the run paused until you resume.
 
-## ✨ Features
+## Features
 
-### 🎛️ Arcade Cabinet Shell
-- **Illuminated Marquee & Bezel**: Glowing retro header, dual speaker grilles, and realistic screen glass reflection.
-- **Authentic CRT Simulation**: CRT phosphor scanlines and vignette effect (toggleable ON/OFF).
-- **Physical Controls Deck**:
-  - Interactive **Micro-switch Joystick** with smooth touch/mouse drag controls and keyboard mapping.
-  - Tactile illuminated push buttons: **FIRE** (Neon Pink), **PAUSE** (Neon Yellow), and **RESET** (Neon Cyan).
-  - **25¢ Coin Mechanism**: Working coin slot that increments credits with authentic double-chime audio.
-- **Web Audio API Synth**: Custom retro chiptune synthesizer with zero external audio assets.
+- Structured waves, five brick archetypes, fifth-wave bosses and tactical Overdrive.
+- Procedural particles, afterimages, shockwaves, combo text and camera shake.
+- Toggleable CRT, three bloom settings (Ultra / Performance / Off), master mute, independent SFX/music settings and optional touch haptics.
+- Persistent Neon Coins, permanent upgrades, unlockable chassis and three cosmetic palettes: Tokyo Midnight, Synthwave Sunset and Cyber Matrix.
+- Top-five local scores with three-letter initials and achievement rewards. Saves remain local to this browser.
+- No external audio or image assets. All game visuals and sounds are generated at runtime.
 
-### ⚡ Neon Brick Breaker
-- **60 FPS Canvas Physics**: Precise collision response with directional deflections based on paddle contact angle.
-- **Particle Explosion Engine**: Neon sparks, embers, and smoke bursts on collisions.
-- **Screen Shake & Shockwaves**: Explosive bricks trigger dynamic camera tremors and chain reactions.
-- **Power-Up Drops**:
-  - 🔵 **Multi-Ball (3x)**: Triples balls on screen.
-  - 🟢 **Wide Paddle**: Expands paddle size with an energy shield.
-  - 🟣 **Slow Motion**: Decelerates balls for precision aiming.
-  - 🔴 **Laser Cannons**: Dual lasers mounted to destroy bricks on click or `Spacebar`.
-  - 🟡 **Extra Life (+1)**: Restores a player heart.
-- **Combo Multipliers**: Dynamic score scaling ($x2$ to $x10$) with escalating pitch tones.
-- **High Score Persistence**: Automatically saved to browser `localStorage`.
+## Development
 
----
+Requires Node.js 18+.
 
-## 🎮 Controls
+    npm install
+    npm run dev
+    npm run build
+    npm test
 
-| Action | Keyboard | Arcade Deck | Mouse / Touch |
-|---|---|---|---|
-| **Move Paddle** | `←` / `→` or `A` / `D` | Drag Joystick | Pointer Movement on Canvas |
-| **Launch Ball / Laser** | `Spacebar` | **FIRE** Button | Click Canvas |
-| **Pause Game** | `P` or `Esc` | **PAUSE** Button | On-screen Pause |
-| **Reset Game** | `R` | **RESET** Button | On-screen Reset |
-| **Insert Coin** | — | Coin Slot / Button | Click Coin Slot |
+On Windows with PowerShell script execution disabled, use npm.cmd in place of npm.
 
----
+The build runs strict TypeScript checking and Vite production bundling. This repository has no separate lint configuration.
 
-## 🚀 Getting Started
+## Architecture and preservation
 
-### Prerequisites
-- Node.js 18+
-- npm or pnpm / yarn
+The original collision, wave and Canvas rendering systems remain in src/components/NeonBrickBreaker.tsx. Shared control handling is isolated in src/hooks/useArcadeInput.ts; the responsive cabinet and control deck are wrapper components. Gameplay reads the adapter's mutable input state per frame, with no React render required for each pointer movement.
 
-### Installation
-```bash
-# Clone the repository
-git clone https://github.com/Rithy089/pocket-neon-arcade.git
-cd pocket-neon-arcade
+Existing balances, upgrades, achievements and leaderboard entries migrate to schema version 3 in the original pocket_neon_save_v2 localStorage key. The existing internal shards field now represents Neon Coins, avoiding a balance reset or two competing wallets. Palettes debit that same wallet only on first purchase. Tokyo Midnight is free; Sunset costs 150 coins and Matrix costs 250.
 
-# Install dependencies
-npm install
+## Verification
 
-# Start local dev server
-npm run dev
-```
+npm test runs isolated store regressions for save migration, palette transactions, upgrade behavior, leaderboard initials and blocked storage.
 
-### Production Build
-```bash
-npm run build
-npm run preview
-```
+For input lifecycle checks, start the dev server, open an arcade menu to suspend the live game's inputs, then run this in the browser console:
 
----
+    import('/tests/input.browser.tsx').then(m => m.runInputSmoke())
 
-## 🛠️ Tech Stack
-- **Framework**: React 18
-- **Language**: TypeScript
-- **Bundler**: Vite 6
-- **Styling**: Tailwind CSS
-- **Audio**: Web Audio API (Chiptune Synthesizer)
-- **Icons**: Lucide React
+The browser fixture mounts the real hook in a disposable React root and verifies keyboard overlap, held fire, blur recovery, disabled input, normalized pointer coordinates, swipe/double tap, simultaneous touch controls and cancellation. Pointer capture is mocked only in that fixture; real-device haptic feedback and physical multitouch should also be checked on target hardware.
+
+Target layout sizes: mobile 390?844 and desktop 1920?1080.

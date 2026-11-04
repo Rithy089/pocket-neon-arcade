@@ -1,10 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ArcadeCabinet } from './components/ArcadeCabinet';
 import { NeonBrickBreaker } from './components/NeonBrickBreaker';
 import { CyberShopModal } from './components/CyberShopModal';
 import { LeaderboardModal } from './components/LeaderboardModal';
 import { AchievementsModal, AchievementToast } from './components/AchievementsModal';
 import { SettingsModal } from './components/SettingsModal';
+import { PaletteModal } from './components/PaletteModal';
+import { PaletteId } from './utils/themes';
+import { setHapticsEnabled, arcadeHaptic } from './utils/haptics';
+import { useArcadeDialogs } from './hooks/useArcadeDialogs';
 import { progression } from './utils/progression';
 import { soundManager } from './utils/audio';
 import { GameSettings, LeaderboardEntry, ChassisId, Achievement } from './types/game';
@@ -27,6 +31,21 @@ export function App() {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [isAchievementsOpen, setIsAchievementsOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
+  const [palette, setPalette] = useState<PaletteId>(() => progression.getData().selectedPalette);
+  const modalOpen = isShopOpen || isLeaderboardOpen || isAchievementsOpen || isSettingsOpen || isPaletteOpen;
+
+  useArcadeDialogs(modalOpen, () => {
+    setIsShopOpen(false); setIsLeaderboardOpen(false); setIsAchievementsOpen(false);
+    setIsSettingsOpen(false); setIsPaletteOpen(false); setPendingLeaderboard(null);
+  });
+
+  useEffect(() => {
+    soundManager.setMuted(settings.masterMuted);
+    soundManager.setSfxEnabled(settings.soundFxEnabled);
+    soundManager.setBgmEnabled(settings.synthBgmEnabled);
+    setHapticsEnabled(settings.hapticsEnabled);
+  }, [settings]);
 
   // Pending top score entry
   const [pendingLeaderboard, setPendingLeaderboard] = useState<{
@@ -38,18 +57,6 @@ export function App() {
   // In-game achievement toast
   const [activeToast, setActiveToast] = useState<Achievement | null>(null);
 
-  // Cabinet action bindings
-  const [activeControlAction, setActiveControlAction] = useState<string | null>(null);
-  const [joystickX, setJoystickX] = useState<number>(0);
-
-  const handleControlAction = (action: string) => {
-    setActiveControlAction(action);
-  };
-
-  const clearControlAction = () => {
-    setActiveControlAction(null);
-  };
-
   const refreshProgressionData = useCallback(() => {
     const data = progression.getData();
     setShards(data.shards);
@@ -57,6 +64,7 @@ export function App() {
     setUnlockedAchievements(data.achievements);
     setLeaderboardEntries(data.highScoreEntries);
     setSettings(data.settings);
+    setPalette(data.selectedPalette);
   }, []);
 
   const handleUpdateSettings = (newSettings: Partial<GameSettings>) => {
@@ -105,9 +113,11 @@ export function App() {
         score={score}
         highScore={highScore}
         shards={shards}
-        onControlAction={handleControlAction}
-        joystickX={joystickX}
-        setJoystickX={setJoystickX}
+        palette={palette}
+        muted={settings.masterMuted}
+        bloomMode={settings.bloomMode}
+        onMute={() => handleUpdateSettings({ masterMuted: !settings.masterMuted })}
+        onOpenPalettes={() => setIsPaletteOpen(true)}
         onOpenShop={() => setIsShopOpen(true)}
         onOpenLeaderboard={() => {
           setPendingLeaderboard(null);
@@ -124,11 +134,13 @@ export function App() {
           onOpenShop={() => setIsShopOpen(true)}
           onOpenLeaderboard={handleOpenLeaderboard}
           onTriggerAchievementToast={handleTriggerAchievement}
-          activeControlAction={activeControlAction}
-          onClearControlAction={clearControlAction}
-          joystickX={joystickX}
+          isObscured={modalOpen}
         />
       </ArcadeCabinet>
+
+      {isPaletteOpen && <PaletteModal onClose={() => setIsPaletteOpen(false)} onChange={() => {
+        refreshProgressionData(); soundManager.playUiBeep(); arcadeHaptic();
+      }} />}
 
       {/* Cyber Shop Modal */}
       <CyberShopModal

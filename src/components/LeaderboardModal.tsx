@@ -15,7 +15,7 @@ interface Props {
   onSubmitInitials?: (initials: string) => void;
 }
 
-const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?#';
+const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 export const LeaderboardModal: React.FC<Props> = ({
   isOpen,
@@ -71,10 +71,10 @@ export const LeaderboardModal: React.FC<Props> = ({
         {pendingEntry && onSubmitInitials && (
           <div className="my-4 p-4 rounded-xl bg-neon-pink/10 border border-neon-pink shadow-neon-pink text-center animate-pulse-glow">
             <div className="text-[10px] text-neon-pink tracking-widest uppercase mb-1">
-              \u2605 NEW TOP 5 RECORD SET! \u2605
+              ★ NEW TOP 5 RECORD SET! ★
             </div>
             <div className="text-sm text-neon-yellow mb-2">
-              SCORE: {pendingEntry.score} \u2022 WAVE {pendingEntry.wave}
+              SCORE: {pendingEntry.score} • WAVE {pendingEntry.wave}
             </div>
             <p className="text-[10px] text-slate-300 font-mono mb-3">
               ENTER YOUR 3-LETTER ARCADE CALLSIGN:

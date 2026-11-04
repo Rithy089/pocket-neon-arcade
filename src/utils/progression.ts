@@ -5,6 +5,7 @@ import {
   LeaderboardEntry,
   Achievement
 } from '../types/game';
+import { PALETTES, PaletteId } from './themes';
 
 const SAVE_KEY = 'pocket_neon_save_v2';
 
@@ -138,6 +139,9 @@ const DEFAULT_LEADERBOARD: LeaderboardEntry[] = [
 ];
 
 export const DEFAULT_PROGRESSION: ProgressionData = {
+  schemaVersion: 3,
+  selectedPalette: 'tokyo',
+  palettesUnlocked: ['tokyo'],
   shards: 100, // Starting bonus for player experimentation
   highScore: 32000,
   selectedChassis: 'vanguard',
@@ -159,6 +163,8 @@ export const DEFAULT_PROGRESSION: ProgressionData = {
     bloomMode: 'high',
     soundFxEnabled: true,
     synthBgmEnabled: true,
+    masterMuted: false,
+    hapticsEnabled: true,
   },
 };
 
@@ -178,12 +184,13 @@ export class ProgressionManager {
   }
 
   private loadData(): ProgressionData {
+    const defaults: ProgressionData = JSON.parse(JSON.stringify(DEFAULT_PROGRESSION));
     try {
       const raw = localStorage.getItem(SAVE_KEY);
       if (!raw) {
         // Check for old highscore
         const oldHighScore = parseInt(localStorage.getItem('neon_arcade_highscore') || '0', 10);
-        const initial = { ...DEFAULT_PROGRESSION };
+        const initial = defaults;
         if (oldHighScore > 0) {
           initial.highScore = Math.max(initial.highScore, oldHighScore);
         }
@@ -192,24 +199,30 @@ export class ProgressionManager {
       }
       const parsed = JSON.parse(raw);
       // Merge with default to guarantee new schema fields exist
-      return {
-        ...DEFAULT_PROGRESSION,
+      const migrated: ProgressionData = {
+        ...defaults,
         ...parsed,
+        schemaVersion: 3,
+        selectedPalette: Object.hasOwnProperty.call(PALETTES, parsed.selectedPalette) ? parsed.selectedPalette : 'tokyo',
+        palettesUnlocked: [...new Set<PaletteId>(['tokyo', ...(Array.isArray(parsed.palettesUnlocked) ? parsed.palettesUnlocked.filter((id: string) => Object.hasOwnProperty.call(PALETTES, id)) : [])])],
         upgrades: {
-          ...DEFAULT_PROGRESSION.upgrades,
+          ...defaults.upgrades,
           ...(parsed.upgrades || {}),
         },
         chassisUnlocked: {
-          ...DEFAULT_PROGRESSION.chassisUnlocked,
+          ...defaults.chassisUnlocked,
           ...(parsed.chassisUnlocked || {}),
         },
         settings: {
-          ...DEFAULT_PROGRESSION.settings,
+          ...defaults.settings,
           ...(parsed.settings || {}),
         },
       };
+      if (!migrated.palettesUnlocked.includes(migrated.selectedPalette)) migrated.selectedPalette = 'tokyo';
+      this.saveData(migrated);
+      return migrated;
     } catch {
-      return DEFAULT_PROGRESSION;
+      return defaults;
     }
   }
 
@@ -281,6 +294,16 @@ export class ProgressionManager {
     this.saveData(this.data);
   }
 
+  public selectPalette(id: PaletteId): boolean {
+    if (!this.data.palettesUnlocked.includes(id)) {
+      if (!this.spendShards(PALETTES[id].cost)) return false;
+      this.data.palettesUnlocked.push(id);
+    }
+    this.data.selectedPalette = id;
+    this.saveData(this.data);
+    return true;
+  }
+
   public checkAchievement(id: string): { unlocked: boolean; achievement?: Achievement } {
     if (this.data.achievements[id]) {
       return { unlocked: false };
@@ -302,7 +325,7 @@ export class ProgressionManager {
   }
 
   public addLeaderboardEntry(initials: string, score: number, wave: number, chassis: ChassisId): LeaderboardEntry[] {
-    const cleanInitials = (initials || 'AAA').toUpperCase().slice(0, 3).padEnd(3, 'A');
+    const cleanInitials = (initials || 'AAA').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3).padEnd(3, 'A');
     const newEntry: LeaderboardEntry = {
       id: `score-${Date.now()}`,
       initials: cleanInitials,

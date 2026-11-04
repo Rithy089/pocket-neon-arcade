@@ -21,7 +21,7 @@ export const SettingsModal: React.FC<Props> = ({
   const toggleSoundFx = () => {
     const next = !settings.soundFxEnabled;
     onUpdateSettings({ soundFxEnabled: next });
-    soundManager.setMuted(!next);
+    soundManager.setSfxEnabled(next);
     if (next) soundManager.playCoin();
   };
 
@@ -37,7 +37,7 @@ export const SettingsModal: React.FC<Props> = ({
   };
 
   const toggleBloomMode = () => {
-    const next = settings.bloomMode === 'high' ? 'performance' : 'high';
+    const next = settings.bloomMode === 'high' ? 'performance' : settings.bloomMode === 'performance' ? 'off' : 'high';
     onUpdateSettings({ bloomMode: next });
     soundManager.playPaddleBounce();
   };
@@ -62,6 +62,12 @@ export const SettingsModal: React.FC<Props> = ({
 
         {/* Settings List */}
         <div className="mt-4 space-y-3 font-mono">
+          <div className="p-3 bg-black/50 border border-slate-800 rounded-xl flex items-center justify-between">
+            <span>MASTER AUDIO</span><button aria-pressed={settings.masterMuted} onClick={() => onUpdateSettings({ masterMuted: !settings.masterMuted })} className="px-3 py-2 border border-slate-600 rounded-lg">{settings.masterMuted ? 'MUTED' : 'ON'}</button>
+          </div>
+          <div className="p-3 bg-black/50 border border-slate-800 rounded-xl flex items-center justify-between">
+            <span>TOUCH HAPTICS</span><button aria-pressed={settings.hapticsEnabled} onClick={() => onUpdateSettings({ hapticsEnabled: !settings.hapticsEnabled })} className="px-3 py-2 border border-slate-600 rounded-lg">{settings.hapticsEnabled ? 'ON' : 'OFF'}</button>
+          </div>
           {/* 1. CRT Scanlines */}
           <div className="p-3 bg-black/50 border border-slate-800 rounded-xl flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -91,7 +97,7 @@ export const SettingsModal: React.FC<Props> = ({
               <div>
                 <span className="font-pixel text-[11px] text-slate-200">BLOOM & GLOW</span>
                 <p className="text-[10px] text-slate-400">
-                  {settings.bloomMode === 'high' ? 'High Dynamic Range Glow' : 'Performance Optimized (Fast)'}
+                  {settings.bloomMode === 'high' ? 'Full neon glow' : settings.bloomMode === 'performance' ? 'Reduced glow for faster rendering' : 'Glow disabled'}
                 </p>
               </div>
             </div>
@@ -104,7 +110,7 @@ export const SettingsModal: React.FC<Props> = ({
                   : 'bg-neon-green/20 border-neon-green text-neon-green shadow-neon-green'
               }`}
             >
-              {settings.bloomMode === 'high' ? 'ULTRA' : 'PERF'}
+              {settings.bloomMode === 'high' ? 'ULTRA' : settings.bloomMode === 'performance' ? 'PERF' : 'OFF'}
             </button>
           </div>
 

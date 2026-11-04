@@ -1,4 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { useArcadeInput } from '../hooks/useArcadeInput';
+import { ArcadeControls } from './ArcadeControls';
+import { arcadeHaptic } from '../utils/haptics';
 import {
   Ball,
   Paddle,
@@ -42,9 +45,7 @@ interface Props {
   onOpenShop: () => void;
   onOpenLeaderboard: (pending?: { score: number; wave: number; chassis: ChassisId }) => void;
   onTriggerAchievementToast: (achievementId: string) => void;
-  activeControlAction?: string | null;
-  onClearControlAction?: () => void;
-  joystickX: number;
+  isObscured: boolean;
 }
 
 const CANVAS_WIDTH = 640;
@@ -61,9 +62,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
   onOpenShop,
   onOpenLeaderboard,
   onTriggerAchievementToast,
-  activeControlAction,
-  onClearControlAction,
-  joystickX,
+  isObscured,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -71,7 +70,6 @@ export const NeonBrickBreaker: React.FC<Props> = ({
   const [gameState, setGameState] = useState<GameState>('READY');
   const [score, setScore] = useState<number>(0);
   const [highScore, setHighScore] = useState<number>(() => progression.getData().highScore);
-  const [shards, setShards] = useState<number>(() => progression.getData().shards);
   const [runShards, setRunShards] = useState<number>(0);
   const [lives, setLives] = useState<number>(3);
   const [wave, setWave] = useState<number>(1);
@@ -140,12 +138,6 @@ export const NeonBrickBreaker: React.FC<Props> = ({
       slowMotion: number;
     };
 
-    // Controls
-    keys: { left: boolean; right: boolean; space: boolean };
-    touchX: number;
-    touchActive: boolean;
-    useMouse: boolean;
-    mouseX: number;
   }>({
     gameState: 'READY',
     score: 0,
@@ -197,11 +189,6 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     hasEmergencyBarrierUpgrade: false,
 
     powerUpTimers: { laser: 0, widePaddle: 0, slowMotion: 0 },
-    keys: { left: false, right: false, space: false },
-    touchX: CANVAS_WIDTH / 2,
-    touchActive: false,
-    useMouse: false,
-    mouseX: CANVAS_WIDTH / 2,
   });
 
   // Callbacks ref
@@ -222,13 +209,9 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     };
   }, [onScoreUpdate, onHighScoreUpdate, onShardsUpdate, onOpenLeaderboard, onTriggerAchievementToast]);
 
-  const joystickXRef = useRef(joystickX);
-  useEffect(() => {
-    joystickXRef.current = joystickX;
-  }, [joystickX]);
-
   // Screen shake & hit stop triggers
   const triggerShake = (intensity: number, angle = Math.random() * Math.PI * 2) => {
+    arcadeHaptic();
     stateRef.current.shake = Math.min(22, stateRef.current.shake + intensity);
     stateRef.current.shakeAngle = angle;
   };
@@ -296,7 +279,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     });
   };
 
-  // Drop Neon Shards
+  // Drop Neon Coins
   const spawnShards = (x: number, y: number, count = 2) => {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -471,6 +454,8 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     }
   }, []);
 
+  const lastShot = useRef(-1000);
+
   // Fire Laser
   const fireLaserOrLaunch = useCallback(() => {
     const s = stateRef.current;
@@ -479,6 +464,9 @@ export const NeonBrickBreaker: React.FC<Props> = ({
       return;
     }
     if (s.gameState === 'PLAYING') {
+      const now = performance.now();
+      if (now - lastShot.current < 140) return;
+      lastShot.current = now;
       if (s.paddle.laserMode || s.isOverdriveActive) {
         soundManager.playLaser(s.isOverdriveActive);
         const leftGunX = s.paddle.x + 8;
@@ -519,95 +507,33 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     initWave(1, false);
   }, [initWave]);
 
-  // Handle external on-screen action buttons
+  const pauseForInterruption = useCallback(() => {
+    soundManager.stopBgm();
+    if (stateRef.current.gameState === 'PLAYING') togglePause();
+  }, [togglePause]);
+
+  const input = useArcadeInput({
+    enabled: !isObscured,
+    onAction: (action) => {
+      if (action === 'fire') fireLaserOrLaunch();
+      else if (action === 'overdrive') triggerOverdrive();
+      else if (action === 'pause') togglePause();
+      else if (action === 'restart') restartGame();
+    },
+    onInterrupt: pauseForInterruption,
+  });
+  const inputState = input.state;
+  const obscuredRef = useRef(isObscured);
+  obscuredRef.current = isObscured;
   useEffect(() => {
-    if (!activeControlAction) return;
+    if (isObscured) pauseForInterruption();
+  }, [isObscured, pauseForInterruption]);
 
-    if (activeControlAction === 'fire') {
-      fireLaserOrLaunch();
-    } else if (activeControlAction === 'overdrive') {
-      triggerOverdrive();
-    } else if (activeControlAction === 'pause') {
-      togglePause();
-    } else if (activeControlAction === 'restart') {
-      restartGame();
-    }
-
-    if (onClearControlAction) onClearControlAction();
-  }, [activeControlAction, fireLaserOrLaunch, triggerOverdrive, togglePause, restartGame, onClearControlAction]);
-
-  // Keyboard controls
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const s = stateRef.current;
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
-        s.keys.left = true;
-        s.useMouse = false;
-        s.touchActive = false;
-      }
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
-        s.keys.right = true;
-        s.useMouse = false;
-        s.touchActive = false;
-      }
-      if (e.key === ' ' || e.key === 'Spacebar') {
-        e.preventDefault();
-        fireLaserOrLaunch();
-      }
-      if (e.key === 'Shift' || e.key === 'e' || e.key === 'E') {
-        e.preventDefault();
-        triggerOverdrive();
-      }
-      if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
-        togglePause();
-      }
-      if (e.key === 'r' || e.key === 'R') {
-        if (s.gameState === 'GAMEOVER' || s.gameState === 'VICTORY') {
-          restartGame();
-        }
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      const s = stateRef.current;
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') s.keys.left = false;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') s.keys.right = false;
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [fireLaserOrLaunch, triggerOverdrive, togglePause, restartGame]);
-
-  // Touch and pointer tracking with vertical offset
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = CANVAS_WIDTH / rect.width;
-    stateRef.current.touchX = (e.clientX - rect.left) * scaleX;
-    stateRef.current.touchActive = true;
-    stateRef.current.useMouse = false;
-
-    fireLaserOrLaunch();
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = CANVAS_WIDTH / rect.width;
-    const clientX = e.clientX - rect.left;
-    stateRef.current.touchX = clientX * scaleX;
-    stateRef.current.touchActive = true;
-  };
-
-  const handlePointerUp = () => {
-    stateRef.current.touchActive = false;
-  };
+    if (gameState !== 'PLAYING') return;
+    document.body.classList.add('arcade-playing');
+    return () => document.body.classList.remove('arcade-playing');
+  }, [gameState]);
 
   // MAIN 60FPS GAME LOOP
   useEffect(() => {
@@ -617,6 +543,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     if (!ctx) return;
 
     let animationFrameId: number;
+    const glow = (amount: number) => settings.bloomMode === 'off' ? 0 : settings.bloomMode === 'performance' ? Math.min(4, amount) : amount;
     let lastTime = performance.now();
 
     const loop = (currentTime: number) => {
@@ -629,19 +556,17 @@ export const NeonBrickBreaker: React.FC<Props> = ({
       // Check Hit Stop (Physics pause during critical impacts)
       if (s.hitStopTimer > 0) {
         s.hitStopTimer -= dt;
-      } else if (s.gameState === 'PLAYING') {
+      } else if (s.gameState === 'PLAYING' && !obscuredRef.current) {
         // --- 1. Paddle Movement ---
-        const jX = joystickXRef.current;
-        if (jX !== 0) {
-          s.paddle.x += jX * s.paddle.speed * 1.25;
-        } else if (s.touchActive) {
-          // Smooth 1:1 tracking
-          const targetX = s.touchX - s.paddle.width / 2;
-          s.paddle.x += (targetX - s.paddle.x) * 0.45;
-        } else {
-          if (s.keys.left) s.paddle.x -= s.paddle.speed;
-          if (s.keys.right) s.paddle.x += s.paddle.speed;
+        const controls = inputState.current;
+        const frame = dt * 60;
+        if (controls.x !== 0) {
+          s.paddle.x += controls.x * s.paddle.speed * frame;
+        } else if (controls.pointerX !== null) {
+          const targetX = controls.pointerX * CANVAS_WIDTH - s.paddle.width / 2;
+          s.paddle.x += (targetX - s.paddle.x) * (1 - Math.pow(0.55, frame));
         }
+        if (controls.firing) fireLaserOrLaunch();
 
         // Clamp inside arena walls
         if (s.paddle.x < 12) s.paddle.x = 12;
@@ -802,6 +727,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
             pw.x <= s.paddle.x + s.paddle.width
           ) {
             soundManager.playPowerup();
+            arcadeHaptic();
             spawnParticles(pw.x, pw.y, pw.color, 22);
             addOverdriveCharge(12);
 
@@ -862,7 +788,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
           }
         }
 
-        // Neon Shards with Magnet Field Pull
+        // Neon Coins with Magnet Field Pull
         for (let i = s.shards.length - 1; i >= 0; i--) {
           const sh = s.shards[i];
           sh.x += sh.vx;
@@ -885,11 +811,12 @@ export const NeonBrickBreaker: React.FC<Props> = ({
             sh.x <= s.paddle.x + s.paddle.width + 8
           ) {
             soundManager.playShardCollect();
+            arcadeHaptic();
             spawnParticles(sh.x, sh.y, '#ffd700', 8, 0.8, true);
             const totalShards = progression.addShards(sh.value);
             s.runShards += sh.value;
             setRunShards(s.runShards);
-            setShards(totalShards);
+
             callbacksRef.current.onShardsUpdate(totalShards);
 
             addOverdriveCharge(3);
@@ -1489,17 +1416,17 @@ export const NeonBrickBreaker: React.FC<Props> = ({
       // 2. Glowing Boundary Border
       ctx.strokeStyle = s.isOverdriveActive ? '#ffe600' : '#00f0ff';
       ctx.shadowColor = s.isOverdriveActive ? '#ffe600' : '#00f0ff';
-      ctx.shadowBlur = isHighBloom ? 14 : 4;
+      ctx.shadowBlur = glow(isHighBloom ? 14 : 4);
       ctx.lineWidth = 2.5;
       ctx.strokeRect(10, 10, CANVAS_WIDTH - 20, CANVAS_HEIGHT - 12);
-      ctx.shadowBlur = 0;
+      ctx.shadowBlur = glow(0);
 
       // 3. Emergency Barrier Laser Floor
       if (s.barrierFloorActive) {
         ctx.save();
         ctx.strokeStyle = '#39ff14';
         ctx.shadowColor = '#39ff14';
-        ctx.shadowBlur = isHighBloom ? 16 : 4;
+        ctx.shadowBlur = glow(isHighBloom ? 16 : 4);
         ctx.lineWidth = 3;
         ctx.setLineDash([12, 6]);
         ctx.beginPath();
@@ -1514,7 +1441,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         ctx.save();
         ctx.fillStyle = b.color;
         ctx.shadowColor = b.glowColor;
-        ctx.shadowBlur = isHighBloom ? 9 : 2;
+        ctx.shadowBlur = glow(isHighBloom ? 9 : 2);
 
         ctx.beginPath();
         ctx.roundRect(b.x, b.y, b.width, b.height, 4);
@@ -1550,7 +1477,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
           if (b.isPhased) {
             ctx.strokeStyle = '#38bdf8';
             ctx.shadowColor = '#38bdf8';
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = glow(10);
             ctx.lineWidth = 2;
             ctx.strokeRect(b.x - 2, b.y - 2, b.width + 4, b.height + 4);
           }
@@ -1584,7 +1511,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         if (b.laserFiringTimer > 0) {
           ctx.fillStyle = 'rgba(255, 7, 58, 0.75)';
           ctx.shadowColor = '#ff073a';
-          ctx.shadowBlur = isHighBloom ? 20 : 6;
+          ctx.shadowBlur = glow(isHighBloom ? 20 : 6);
           ctx.fillRect(b.laserX - b.laserWidth / 2, b.y + b.height, b.laserWidth, CANVAS_HEIGHT);
         } else if (b.laserWarningTimer < 1.5) {
           // Warning dotted laser line
@@ -1605,7 +1532,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
 
           ctx.fillStyle = node.color;
           ctx.shadowColor = node.color;
-          ctx.shadowBlur = 12;
+          ctx.shadowBlur = glow(12);
           ctx.beginPath();
           ctx.arc(nx, ny, 10, 0, Math.PI * 2);
           ctx.fill();
@@ -1614,7 +1541,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         // Boss Main Body
         ctx.fillStyle = b.hp < b.maxHp * 0.4 ? '#ff073a' : '#ff007f';
         ctx.shadowColor = ctx.fillStyle;
-        ctx.shadowBlur = isHighBloom ? 20 : 6;
+        ctx.shadowBlur = glow(isHighBloom ? 20 : 6);
 
         ctx.beginPath();
         ctx.roundRect(b.x, b.y, b.width, b.height, 10);
@@ -1639,7 +1566,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         ctx.save();
         ctx.fillStyle = hz.color;
         ctx.shadowColor = hz.color;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = glow(12);
         ctx.beginPath();
         ctx.arc(hz.x, hz.y, hz.radius, 0, Math.PI * 2);
         ctx.fill();
@@ -1651,7 +1578,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         ctx.save();
         ctx.fillStyle = pw.color;
         ctx.shadowColor = pw.color;
-        ctx.shadowBlur = isHighBloom ? 14 : 3;
+        ctx.shadowBlur = glow(isHighBloom ? 14 : 3);
 
         ctx.beginPath();
         ctx.roundRect(pw.x - pw.width / 2, pw.y, pw.width, pw.height, 6);
@@ -1672,12 +1599,12 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         ctx.restore();
       });
 
-      // 8. Neon Shards (Spinning Glowing Diamonds)
+      // 8. Neon Coins (Spinning Glowing Diamonds)
       s.shards.forEach((sh) => {
         ctx.save();
         ctx.fillStyle = sh.color;
         ctx.shadowColor = sh.color;
-        ctx.shadowBlur = isHighBloom ? 12 : 3;
+        ctx.shadowBlur = glow(isHighBloom ? 12 : 3);
 
         ctx.translate(sh.x, sh.y);
         ctx.beginPath();
@@ -1702,7 +1629,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         ctx.save();
         ctx.fillStyle = laser.color;
         ctx.shadowColor = laser.color;
-        ctx.shadowBlur = isHighBloom ? 14 : 4;
+        ctx.shadowBlur = glow(isHighBloom ? 14 : 4);
         ctx.fillRect(laser.x - laser.width / 2, laser.y, laser.width, laser.height);
         ctx.restore();
       });
@@ -1720,7 +1647,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
       ctx.save();
       ctx.fillStyle = s.isOverdriveActive ? '#ffe600' : s.paddle.color;
       ctx.shadowColor = ctx.fillStyle;
-      ctx.shadowBlur = isHighBloom ? (s.isOverdriveActive ? 24 : 15) : 4;
+      ctx.shadowBlur = glow(isHighBloom ? (s.isOverdriveActive ? 24 : 15) : 4);
 
       ctx.beginPath();
       ctx.roundRect(s.paddle.x, s.paddle.y, s.paddle.width, s.paddle.height, 8);
@@ -1756,7 +1683,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         ctx.save();
         ctx.fillStyle = ball.color;
         ctx.shadowColor = ball.color;
-        ctx.shadowBlur = isHighBloom ? (ball.isPlasma ? 20 : 14) : 4;
+        ctx.shadowBlur = glow(isHighBloom ? (ball.isPlasma ? 20 : 14) : 4);
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
         ctx.fill();
@@ -1809,7 +1736,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         ctx.fillStyle = ft.color;
         ctx.globalAlpha = Math.max(0, ft.alpha);
         ctx.shadowColor = ft.color;
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = glow(8);
         ctx.textAlign = 'center';
         ctx.fillText(ft.text, ft.x, ft.y);
         ctx.restore();
@@ -1822,13 +1749,13 @@ export const NeonBrickBreaker: React.FC<Props> = ({
 
     animationFrameId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animationFrameId);
-  }, [settings.bloomMode]);
+  }, [settings.bloomMode, inputState, fireLaserOrLaunch]);
 
   return (
-    <div className="relative w-full max-w-[640px] mx-auto select-none">
+    <div className="game-module relative w-full max-w-[640px] mx-auto select-none">
       {/* Game Canvas Container */}
       <div
-        className={`relative aspect-[640/720] w-full rounded-2xl overflow-hidden bg-arcade-dark border-4 border-arcade-bezel shadow-[0_0_30px_rgba(0,240,255,0.25)] ${
+        className={`game-screen relative aspect-[640/720] w-full rounded-2xl overflow-hidden bg-arcade-dark border-4 border-arcade-bezel shadow-[0_0_30px_rgba(0,240,255,0.25)] ${
           settings.crtEnabled ? 'crt-screen' : ''
         }`}
       >
@@ -1836,9 +1763,8 @@ export const NeonBrickBreaker: React.FC<Props> = ({
           ref={canvasRef}
           width={CANVAS_WIDTH}
           height={CANVAS_HEIGHT}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
+          {...input.canvasProps}
+          aria-label="Neon Brick Breaker playfield. Move with A/D or arrows, Space to launch, Shift for Overdrive."
           className="w-full h-full block cursor-crosshair touch-none"
         />
 
@@ -1865,18 +1791,11 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         )}
 
         {/* 2. Top Status Bar: Lives, Overdrive Meter, Shards, Wave */}
-        <div className="absolute top-8 left-3 right-3 flex items-center justify-between pointer-events-none z-10 px-1 font-pixel text-xs">
+        <div style={bossHp ? { top: 52 } : undefined} className="game-hud absolute top-8 left-3 right-3 flex items-center justify-between pointer-events-none z-10 px-1 font-pixel text-xs">
           {/* Lives */}
-          <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-sm px-2.5 py-1.5 rounded-lg border border-neon-pink/40 shadow-neon-pink">
+          <div className="hud-lives flex items-center gap-1.5 bg-black/60 backdrop-blur-sm px-2.5 py-1.5 rounded-lg border border-neon-pink/40 shadow-neon-pink">
             <span className="text-neon-pink text-[9px] mr-0.5">LIVES</span>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Heart
-                key={i}
-                className={`w-3.5 h-3.5 transition-all ${
-                  i < lives ? 'fill-neon-pink text-neon-pink' : 'text-slate-700 opacity-20'
-                }`}
-              />
-            ))}
+            <Heart className="w-3 h-3 fill-neon-pink text-neon-pink" /><span>{lives}</span>
           </div>
 
           {/* Overdrive Meter */}
@@ -1885,7 +1804,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
               e.stopPropagation();
               triggerOverdrive();
             }}
-            className={`pointer-events-auto cursor-pointer flex items-center gap-2 bg-black/75 px-3 py-1.5 rounded-lg border transition-all ${
+            className={`hud-overdrive pointer-events-auto cursor-pointer flex items-center gap-2 bg-black/75 px-3 py-1.5 rounded-lg border transition-all ${
               overdriveMeter >= 100
                 ? 'border-neon-yellow shadow-[0_0_15px_#ffe600] animate-pulse bg-neon-yellow/10'
                 : 'border-slate-800'
@@ -1915,12 +1834,12 @@ export const NeonBrickBreaker: React.FC<Props> = ({
 
           {/* Shards Currency & Wave */}
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 bg-black/60 px-2.5 py-1.5 rounded-lg border border-neon-yellow/40 text-neon-yellow text-[10px]">
+            <div className="hud-wallet flex items-center gap-1 bg-black/60 px-2.5 py-1.5 rounded-lg border border-neon-yellow/40 text-neon-yellow text-[10px]">
               <Disc3 className="w-3.5 h-3.5 animate-spin" />
-              <span>{shards} (+{runShards})</span>
+              <span>+{runShards} COINS</span>
             </div>
 
-            <div className="bg-black/60 backdrop-blur-sm px-2.5 py-1.5 rounded-lg border border-neon-cyan/40 shadow-neon-cyan text-neon-cyan text-[10px]">
+            <div className="hud-wave bg-black/60 backdrop-blur-sm px-2.5 py-1.5 rounded-lg border border-neon-cyan/40 shadow-neon-cyan text-neon-cyan text-[10px]">
               WAVE {wave}
             </div>
           </div>
@@ -1934,7 +1853,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         )}
 
         {/* 3. Active Buff Countdown Badges */}
-        <div className="absolute top-18 left-4 flex items-center gap-2 pointer-events-none z-10 font-mono">
+        <div style={bossHp ? { top: 96 } : undefined} className="buff-badges absolute top-20 left-4 flex items-center gap-2 pointer-events-none z-10 font-mono">
           {activePowerUps.overdrive > 0 && (
             <div className="flex items-center gap-1 bg-neon-yellow/20 border border-neon-yellow text-neon-yellow px-2 py-0.5 rounded text-[10px] font-pixel animate-pulse">
               <Zap className="w-3 h-3" />
@@ -1988,7 +1907,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
               </h2>
               <p className="text-[10px] text-neon-pink font-mono mb-3">{waveBanner?.subtitle}</p>
               <p className="text-xs text-slate-300 font-mono mb-4 leading-relaxed">
-                Click canvas, tap <span className="text-neon-pink font-bold">FIRE</span>, or press{' '}
+                Tap the field, press A / <span className="text-neon-pink font-bold">FIRE</span>, or press{' '}
                 <span className="text-neon-pink font-bold">SPACE</span> to launch!
               </p>
               <div className="text-[11px] font-pixel text-neon-green animate-pulse">
@@ -2092,29 +2011,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Floating Canvas Quick Status Bar */}
-      <div className="flex items-center justify-between mt-3 px-2 text-xs font-mono text-slate-400">
-        <div className="text-[11px] hidden sm:block text-slate-400 font-mono">
-          [DRAG / ARROWS] Move • [SPACE] Launch/Laser • [SHIFT] Overdrive • [P] Pause
-        </div>
-
-        <div className="flex items-center gap-2 ml-auto">
-          <button
-            onClick={togglePause}
-            className="px-3 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-900 text-slate-300 text-[11px] font-pixel flex items-center gap-1.5 cursor-pointer active:scale-95"
-          >
-            {gameState === 'PAUSED' ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-            {gameState === 'PAUSED' ? 'PLAY' : 'PAUSE'}
-          </button>
-          <button
-            onClick={restartGame}
-            className="px-3 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-900 text-slate-300 text-[11px] font-pixel flex items-center gap-1.5 cursor-pointer active:scale-95"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            RESET
-          </button>
-        </div>
-      </div>
+      <ArcadeControls input={input} disabled={isObscured} overdrive={overdriveMeter} active={isOverdriveActive} />
     </div>
   );
 };

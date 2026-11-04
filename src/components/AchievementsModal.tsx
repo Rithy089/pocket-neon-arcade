@@ -115,7 +115,7 @@ export const AchievementsModal: React.FC<ModalProps> = ({ isOpen, onClose, unloc
 
         {/* Footer */}
         <div className="mt-5 pt-3 border-t border-slate-800/80 text-center font-mono text-[9px] text-slate-500">
-          Achievements reward permanent Neon Shards instantly.
+          Achievements reward permanent Neon Coins instantly.
         </div>
       </div>
     </div>
@@ -142,7 +142,7 @@ export const AchievementToast: React.FC<ToastProps> = ({ achievement, onDismiss 
         </div>
         <div className="flex-1">
           <div className="text-[9px] text-neon-pink uppercase tracking-widest">
-            \u2605 ACHIEVEMENT UNLOCKED! \u2605
+            ★ ACHIEVEMENT UNLOCKED! ★
           </div>
           <div className="text-xs text-white font-bold my-0.5">{achievement.title}</div>
           <div className="text-[10px] text-slate-300 font-mono">{achievement.description}</div>

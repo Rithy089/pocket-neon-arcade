@@ -4,6 +4,7 @@
 class SoundManager {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
+  private isSfxEnabled: boolean = true;
   private isBgmEnabled: boolean = true;
   private masterGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
@@ -15,7 +16,7 @@ class SoundManager {
   private bgmTimerId: number | null = null;
   private currentStep: number = 0;
   private nextNoteTime: number = 0;
-  private tempo: number = 124; // 124 BPM
+  private tempo: number = 120;
   private bgmIntensity: 'normal' | 'boss' | 'overdrive' = 'normal';
 
   // Pentatonic scale frequency ratios for combo hits
@@ -47,7 +48,8 @@ class SoundManager {
       const AudioCtxClass =
         window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.ctx = new AudioCtxClass();
+      if (!AudioCtxClass) return;
+      try { this.ctx = new AudioCtxClass(); } catch { return; }
 
       // Master Gain
       this.masterGain = this.ctx.createGain();
@@ -56,7 +58,7 @@ class SoundManager {
 
       // SFX Bus
       this.sfxGain = this.ctx.createGain();
-      this.sfxGain.gain.setValueAtTime(0.85, this.ctx.currentTime);
+      this.sfxGain.gain.setValueAtTime(this.isSfxEnabled ? 0.85 : 0, this.ctx.currentTime);
       this.sfxGain.connect(this.masterGain);
 
       // BGM Bus & Filter
@@ -73,7 +75,7 @@ class SoundManager {
     }
 
     if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      void this.ctx.resume().catch(() => {});
     }
   }
 
@@ -88,14 +90,17 @@ class SoundManager {
     return this.isMuted;
   }
 
+  public setSfxEnabled(enabled: boolean) {
+    this.isSfxEnabled = enabled;
+    if (this.sfxGain && this.ctx) this.sfxGain.gain.setValueAtTime(enabled ? .85 : 0, this.ctx.currentTime);
+  }
+
   public setBgmEnabled(enabled: boolean) {
     this.isBgmEnabled = enabled;
     if (this.bgmGain && this.ctx) {
       this.bgmGain.gain.setValueAtTime(enabled ? 0.35 : 0, this.ctx.currentTime);
     }
-    if (enabled && !this.isBgmPlaying) {
-      this.startBgm();
-    } else if (!enabled && this.isBgmPlaying) {
+    if (!enabled && this.isBgmPlaying) {
       this.stopBgm();
     }
   }
@@ -217,9 +222,24 @@ class SoundManager {
 
   // --- SOUND EFFECTS ---
 
+  public playUiBeep() {
+    if (this.isMuted || !this.isSfxEnabled) return;
+    this.initCtx();
+    if (!this.ctx || !this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1320, t);
+    gain.gain.setValueAtTime(.14, t);
+    gain.gain.exponentialRampToValueAtTime(.001, t + .055);
+    osc.connect(gain); gain.connect(this.sfxGain);
+    osc.start(t); osc.stop(t + .06);
+  }
+
   // Coin insertion sound (authentic retro twin-tone chime)
   public playCoin() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -228,8 +248,8 @@ class SoundManager {
     const gain = this.ctx.createGain();
 
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(987.77, t); // B5
-    osc.frequency.setValueAtTime(1318.51, t + 0.08); // E6
+    osc.frequency.setValueAtTime(587, t);
+    osc.frequency.setValueAtTime(880, t + 0.08);
 
     gain.gain.setValueAtTime(0.4, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
@@ -243,7 +263,7 @@ class SoundManager {
 
   // Paddle bounce: clean crisp retro blip
   public playPaddleBounce() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -267,7 +287,7 @@ class SoundManager {
 
   // Wall bounce: lower soft synth bump
   public playWallBounce() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -291,7 +311,7 @@ class SoundManager {
 
   // Brick hit / crunch with musical Pentatonic Scale pitch escalation!
   public playBrickHit(isArmored = false, comboCount = 0) {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -321,7 +341,7 @@ class SoundManager {
 
   // Layered dual-stage explosion: Filtered white noise burst + Pitch-dropping Sine sub-bass (130Hz -> 32Hz)
   public playExplosion(heavy = false) {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -373,7 +393,7 @@ class SoundManager {
 
   // Laser beam shot
   public playLaser(isPlasma = false) {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -381,7 +401,7 @@ class SoundManager {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    osc.type = isPlasma ? 'sawtooth' : 'triangle';
+    osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(isPlasma ? 1400 : 1100, t);
     osc.frequency.exponentialRampToValueAtTime(isPlasma ? 120 : 220, t + (isPlasma ? 0.15 : 0.1));
 
@@ -397,7 +417,7 @@ class SoundManager {
 
   // Powerup collected (triumphant arpeggio)
   public playPowerup() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -425,7 +445,7 @@ class SoundManager {
 
   // Collect Neon Shard chime (clean crystalline ping)
   public playShardCollect() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -449,7 +469,7 @@ class SoundManager {
 
   // Overdrive Activation Hyper Whoosh
   public playOverdriveTrigger() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -473,7 +493,7 @@ class SoundManager {
 
   // Shield deflection / forcefield absorption
   public playShieldDeflect() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -497,7 +517,7 @@ class SoundManager {
 
   // Combo multiplier popup chime
   public playCombo(comboCount: number) {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -522,7 +542,7 @@ class SoundManager {
 
   // Achievement unlocked fanfare
   public playAchievement() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -550,7 +570,7 @@ class SoundManager {
 
   // Life lost
   public playLifeLost() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -574,11 +594,11 @@ class SoundManager {
 
   // Game over theme
   public playGameOver() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
-    const notes = [392.0, 369.99, 349.23, 311.13, 261.63];
+    const notes = [392, 311.13, 261.63]; // G, Eb, C: descending C minor triad
     const t = this.ctx.currentTime;
 
     notes.forEach((freq, idx) => {
@@ -586,23 +606,23 @@ class SoundManager {
       const gain = this.ctx!.createGain();
       const noteTime = t + idx * 0.12;
 
-      osc.type = 'square';
+      osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, noteTime);
 
       gain.gain.setValueAtTime(0.25, noteTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.65);
 
       osc.connect(gain);
       gain.connect(this.sfxGain!);
 
       osc.start(noteTime);
-      osc.stop(noteTime + 0.2);
+      osc.stop(noteTime + 0.7);
     });
   }
 
   // Wave clear triumphant victory jingle
   public playLevelClear() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 
@@ -630,7 +650,7 @@ class SoundManager {
 
   // Grand arcade victory anthem
   public playGameWin() {
-    if (this.isMuted) return;
+    if (this.isMuted || !this.isSfxEnabled) return;
     this.initCtx();
     if (!this.ctx || !this.sfxGain) return;
 

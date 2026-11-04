@@ -188,9 +188,11 @@ export interface LaserBeam {
 
 export interface GameSettings {
   crtEnabled: boolean;
-  bloomMode: 'high' | 'performance';
+  bloomMode: 'high' | 'performance' | 'off';
   soundFxEnabled: boolean;
   synthBgmEnabled: boolean;
+  masterMuted: boolean;
+  hapticsEnabled: boolean;
 }
 
 export interface CyberUpgrade {
@@ -200,6 +202,9 @@ export interface CyberUpgrade {
 }
 
 export interface ProgressionData {
+  schemaVersion: number;
+  selectedPalette: import('../utils/themes').PaletteId;
+  palettesUnlocked: import('../utils/themes').PaletteId[];
   shards: number;
   highScore: number;
   selectedChassis: ChassisId;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Zap,
@@ -23,6 +23,7 @@ interface Props {
 
 export const CyberShopModal: React.FC<Props> = ({ isOpen, onClose, onDataChange }) => {
   const [data, setData] = useState<ProgressionData>(() => progression.getData());
+  useEffect(() => { if (isOpen) setData(progression.getData()); }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -64,7 +65,7 @@ export const CyberShopModal: React.FC<Props> = ({ isOpen, onClose, onDataChange 
   > = {
     magnetField: {
       name: 'MAGNETIC HARVESTER',
-      desc: 'Generates an attraction gravity well for falling power-ups and Neon Shards (+35px radius per tier).',
+      desc: 'Generates an attraction gravity well for falling power-ups and Neon Coins (+35px radius per tier).',
       icon: <Magnet className="w-5 h-5 text-neon-cyan" />,
       color: 'border-neon-cyan text-neon-cyan',
     },
@@ -187,7 +188,7 @@ export const CyberShopModal: React.FC<Props> = ({ isOpen, onClose, onDataChange 
                     ) : (
                       <>
                         <span>UPGRADE</span>
-                        <span className="text-neon-yellow">[{nextCost} SHARDS]</span>
+                        <span className="text-neon-yellow">[{nextCost} COINS]</span>
                       </>
                     )}
                   </button>
@@ -276,7 +277,7 @@ export const CyberShopModal: React.FC<Props> = ({ isOpen, onClose, onDataChange 
                       </>
                     ) : (
                       <>
-                        <Lock className="w-3 h-3" /> UNLOCK [{cfg.cost} SHARDS]
+                        <Lock className="w-3 h-3" /> UNLOCK [{cfg.cost} COINS]
                       </>
                     )}
                   </button>
