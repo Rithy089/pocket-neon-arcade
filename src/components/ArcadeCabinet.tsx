@@ -48,7 +48,7 @@ export function ArcadeCabinet(props: Props) {
         <div className="cabinet-scoreboard" aria-label="Scoreboard">
           <div><small>1UP SCORE</small><strong>{props.score.toString().padStart(6, '0')}</strong></div>
           <div><small><Trophy size={11} /> PERSONAL BEST</small><strong>{props.highScore.toString().padStart(6, '0')}</strong></div>
-          <button onClick={props.onOpenPalettes} aria-label={`${props.shards} Neon Coins. Open palettes`}><small><Coins size={11} /> NEON COINS</small><strong>{props.shards.toLocaleString()}</strong></button>
+          <button onClick={props.onOpenShop} aria-label={`${props.shards} Neon Coins. Open cyber shop`}><small><Coins size={11} /> NEON COINS</small><strong>{props.shards.toLocaleString()}</strong></button>
         </div>
         {props.children}
       </section>

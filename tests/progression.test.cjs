@@ -78,3 +78,45 @@ test('blocked storage remains playable and defaults are not mutated by purchases
   assert.equal(progression.getData().upgrades.magnetField.tier, 1);
   assert.equal(DEFAULT_PROGRESSION.upgrades.magnetField.tier, 0);
 });
+
+test('a partial or malformed upgrade does not reset valid wallet, settings or achievements', () => {
+  const { progression } = loadStore({
+    shards: 789, highScore: 98765, selectedChassis: '__proto__',
+    upgrades: { emergencyBarrier: { tier: 3 }, magnetField: { tier: 999, costs: null }, comboCapacitor: null },
+    settings: { soundFxEnabled: false, crtEnabled: 'false', bloomMode: 'broken' },
+    achievements: { first_blood: true, combo_10: false },
+    highScoreEntries: [null, { initials: 'ACE', score: 98765, wave: 6 }, { score: 'bad' }],
+  });
+  const data = progression.getData();
+  assert.equal(data.shards, 789); assert.equal(data.highScore, 98765);
+  assert.equal(data.selectedChassis, 'vanguard');
+  assert.equal(data.upgrades.emergencyBarrier.tier, 3);
+  assert.equal(data.upgrades.emergencyBarrier.costs[3], 600);
+  assert.equal(data.upgrades.magnetField.tier, 5); assert.equal(data.upgrades.comboCapacitor.tier, 0);
+  assert.equal(data.settings.soundFxEnabled, false); assert.equal(data.settings.crtEnabled, true);
+  assert.equal(data.settings.bloomMode, 'high'); assert.equal(data.achievements.first_blood, true);
+  assert.equal(data.highScoreEntries.length, 1); assert.equal(data.highScoreEntries[0].initials, 'ACE');
+});
+
+test('valid chassis and palette unlocks survive migration and invalid selections cannot crash a run', () => {
+  const { progression, storage } = loadStore({
+    shards: 1000, selectedChassis: 'phantom', chassisUnlocked: { vanguard: false, phantom: true },
+    selectedPalette: 'matrix', palettesUnlocked: ['tokyo', 'matrix', 'matrix', 'invalid'],
+  });
+  const data = progression.getData();
+  assert.equal(data.selectedChassis, 'phantom'); assert.equal(data.chassisUnlocked.vanguard, true);
+  assert.equal(data.selectedPalette, 'matrix'); assert.equal(data.palettesUnlocked.length, 2);
+  assert.equal(JSON.parse(storage.get('pocket_neon_save_v2')).schemaVersion, 3);
+  const locked = loadStore({ selectedChassis: 'titan', chassisUnlocked: { titan: false } }).progression.getData();
+  assert.equal(locked.selectedChassis, 'vanguard');
+});
+
+test('a record survives reloading without submitting initials; invalid transactions cannot corrupt the wallet', () => {
+  const { progression, storage } = loadStore({ shards: 321 });
+  assert.equal(progression.recordHighScore(76543), 76543);
+  const reloaded = loadStore(JSON.parse(storage.get('pocket_neon_save_v2'))).progression;
+  assert.equal(reloaded.getData().highScore, 76543);
+  assert.equal(reloaded.recordHighScore(Infinity), 76543);
+  assert.equal(reloaded.spendShards(-50), false); assert.equal(reloaded.spendShards(NaN), false);
+  assert.equal(reloaded.addShards(NaN), 321);
+});

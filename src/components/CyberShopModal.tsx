@@ -109,7 +109,7 @@ export const CyberShopModal: React.FC<Props> = ({ isOpen, onClose, onDataChange 
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/60 border border-neon-yellow/60 shadow-neon-yellow">
               <Disc3 className="w-4 h-4 text-neon-yellow animate-spin" />
               <span className="text-xs text-neon-yellow font-bold">{data.shards}</span>
-              <span className="text-[9px] text-slate-400 font-mono">SHARDS</span>
+              <span className="text-[9px] text-slate-400 font-mono">COINS</span>
             </div>
 
             <button
@@ -121,6 +121,7 @@ export const CyberShopModal: React.FC<Props> = ({ isOpen, onClose, onDataChange 
           </div>
         </div>
 
+        <p className="mt-4 text-xs font-mono leading-relaxed text-slate-400">Chassis changes equip on your next run. Barrier upgrades recharge next wave. Other core upgrades apply when you resume.</p>
         {/* Section 1: Permanent Upgrades */}
         <div className="mt-5">
           <div className="flex items-center gap-2 mb-3 text-xs text-neon-pink">

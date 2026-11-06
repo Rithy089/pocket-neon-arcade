@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Settings, Tv, Sparkles, Volume2, Music, Check } from 'lucide-react';
+import { X, Settings, Tv, Sparkles, Volume2, Music, Check, Vibrate } from 'lucide-react';
 import { GameSettings } from '../types/game';
 import { soundManager } from '../utils/audio';
 
@@ -63,10 +63,10 @@ export const SettingsModal: React.FC<Props> = ({
         {/* Settings List */}
         <div className="mt-4 space-y-3 font-mono">
           <div className="p-3 bg-black/50 border border-slate-800 rounded-xl flex items-center justify-between">
-            <span>MASTER AUDIO</span><button aria-pressed={settings.masterMuted} onClick={() => onUpdateSettings({ masterMuted: !settings.masterMuted })} className="px-3 py-2 border border-slate-600 rounded-lg">{settings.masterMuted ? 'MUTED' : 'ON'}</button>
+            <div className="flex items-center gap-3"><Volume2 className="w-5 h-5 text-neon-cyan" /><div><span className="font-pixel text-[11px] text-slate-200">MASTER AUDIO</span><p className="text-[10px] text-slate-400">Mute all music and sound effects</p></div></div><button aria-label="Toggle master audio mute" aria-pressed={settings.masterMuted} onClick={() => onUpdateSettings({ masterMuted: !settings.masterMuted })} className="px-3 py-2 border border-slate-600 rounded-lg">{settings.masterMuted ? 'MUTED' : 'ON'}</button>
           </div>
           <div className="p-3 bg-black/50 border border-slate-800 rounded-xl flex items-center justify-between">
-            <span>TOUCH HAPTICS</span><button aria-pressed={settings.hapticsEnabled} onClick={() => onUpdateSettings({ hapticsEnabled: !settings.hapticsEnabled })} className="px-3 py-2 border border-slate-600 rounded-lg">{settings.hapticsEnabled ? 'ON' : 'OFF'}</button>
+            <div className="flex items-center gap-3"><Vibrate className="w-5 h-5 text-neon-pink" /><div><span className="font-pixel text-[11px] text-slate-200">TOUCH HAPTICS</span><p className="text-[10px] text-slate-400">Vibration on supported touch devices</p></div></div><button aria-label="Toggle touch haptics" aria-pressed={settings.hapticsEnabled} onClick={() => onUpdateSettings({ hapticsEnabled: !settings.hapticsEnabled })} className="px-3 py-2 border border-slate-600 rounded-lg">{settings.hapticsEnabled ? 'ON' : 'OFF'}</button>
           </div>
           {/* 1. CRT Scanlines */}
           <div className="p-3 bg-black/50 border border-slate-800 rounded-xl flex items-center justify-between">

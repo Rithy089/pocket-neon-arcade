@@ -13,8 +13,8 @@ export function runInputSmoke() {
   let input: ArcadeInput;
   const actions: ArcadeAction[] = [];
   const passed: string[] = [];
-  function Harness({ enabled }: { enabled: boolean }) {
-    input = useArcadeInput({ enabled, onAction: action => actions.push(action), onInterrupt: () => actions.push('pause') });
+  function Harness({ enabled, doubleTap = true }: { enabled: boolean; doubleTap?: boolean }) {
+    input = useArcadeInput({ enabled, allowDoubleTap: () => doubleTap, onAction: action => actions.push(action), onInterrupt: () => actions.push('pause') });
     return null;
   }
   const check = (condition: boolean, label: string) => { if (!condition) throw Error(label); passed.push(label); };
@@ -50,6 +50,7 @@ export function runInputSmoke() {
     check(input!.state.current.pointerX === .25, 'canvas pointer coordinates normalize to the viewport');
     flushSync(() => input!.canvasProps.onPointerUp({ ...event, clientY: 10 }));
     check(actions.at(-1) === 'overdrive', 'an upward swipe triggers Overdrive');
+    check(input!.state.current.pointerX === null, 'lifting a touch releases direct positioning');
     flushSync(() => input!.reset());
     const tap = pointer(2, 50, 50) as typeof event;
     flushSync(() => { input!.canvasProps.onPointerDown(tap); input!.canvasProps.onPointerUp(tap); });
@@ -61,6 +62,23 @@ export function runInputSmoke() {
     flushSync(() => input!.stickProps.onPointerCancel(pointer(3, 100, 50) as unknown as Parameters<ArcadeInput['stickProps']['onPointerCancel']>[0]));
     flushSync(() => input!.fireProps.onPointerCancel(pointer(4, 0, 0) as unknown as Parameters<ArcadeInput['fireProps']['onPointerCancel']>[0]));
     check(input!.state.current.x === 0 && !input!.state.current.firing, 'pointer cancellation releases thumbstick and fire');
+    flushSync(() => input!.reset());
+    flushSync(() => input!.stickProps.onPointerDown(pointer(5, 100, 50) as unknown as Parameters<ArcadeInput['stickProps']['onPointerDown']>[0]));
+    const canvasTap = pointer(6, 20, 20) as typeof event;
+    flushSync(() => { input!.canvasProps.onPointerDown(canvasTap); input!.canvasProps.onPointerUp(canvasTap); });
+    check(input!.state.current.x > .9 && input!.state.current.pointerX === null, 'canvas taps cannot cancel a stationary held thumbstick');
+    key('keydown', 'KeyA'); key('keyup', 'KeyA');
+    check(input!.state.current.x > .9, 'keyboard key-up cannot cancel a stationary held thumbstick');
+    flushSync(() => input!.reset());
+    flushSync(() => root.render(createElement(Harness, { enabled: true, doubleTap: false })));
+    const beforeRapidFire = actions.filter(action => action === 'overdrive').length;
+    flushSync(() => { input!.canvasProps.onPointerDown(tap); input!.canvasProps.onPointerUp(tap); });
+    flushSync(() => { input!.canvasProps.onPointerDown(tap); input!.canvasProps.onPointerUp(tap); });
+    check(actions.filter(action => action === 'overdrive').length === beforeRapidFire, 'rapid-fire mode cannot accidentally trigger double-tap Overdrive');
+    const beforeButton = actions.length;
+    flushSync(() => input!.actionProps('overdrive').onPointerDown(pointer(7, 0, 0) as unknown as Parameters<ArcadeInput['fireProps']['onPointerDown']>[0]));
+    flushSync(() => input!.actionProps('overdrive').onClick({ detail: 1 } as Parameters<ArcadeInput['fireProps']['onClick']>[0]));
+    check(actions.length === beforeButton + 1 && actions.at(-1) === 'overdrive', 'action B responds on pointer-down without a duplicate click');
     return { passed };
   } finally {
     flushSync(() => root.unmount());

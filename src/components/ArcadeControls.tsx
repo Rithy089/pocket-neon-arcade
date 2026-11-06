@@ -2,14 +2,14 @@ import { Pause, RotateCcw } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import type { ArcadeInput } from '../hooks/useArcadeInput';
 
-export function ArcadeControls({ input, disabled, overdrive, active }: {
-  input: ArcadeInput; disabled: boolean; overdrive: number; active: boolean;
+export function ArcadeControls({ input, disabled, overdrive, active, playing }: {
+  input: ArcadeInput; disabled: boolean; overdrive: number; active: boolean; playing: boolean;
 }) {
   return (
     <section className="control-deck" aria-label="Arcade controls">
       <div className="control-hints">
         <span className="status-dot" />
-        {input.mode === 'touch' ? 'DRAG TO MOVE / SWIPE UP OR DOUBLE TAP FOR OVERDRIVE' :
+        {input.mode === 'touch' ? 'DRAG TO MOVE / HOLD A TO SHOOT / SWIPE UP FOR OVERDRIVE' :
           <span><kbd>A D</kbd> / <kbd>← →</kbd> Move <kbd>SPACE</kbd> Shoot <kbd>SHIFT</kbd> Overdrive <kbd>ESC</kbd> Pause</span>}
       </div>
       <div className="control-row">
@@ -23,7 +23,7 @@ export function ArcadeControls({ input, disabled, overdrive, active }: {
         <div className="deck-center"><span>NEON BRICK BREAKER</span><small>ONE MORE WAVE.</small></div>
         <div className="action-cluster">
           <div><button {...input.fireProps} disabled={disabled} className="arcade-button action-a" aria-label="A: Launch or shoot">A</button><span className="control-caption">SHOOT</span></div>
-          <div><button disabled={disabled || (overdrive < 100 && !active)} onClick={() => input.dispatch('overdrive')}
+          <div><button disabled={disabled || !playing || (overdrive < 100 && !active)} {...input.actionProps('overdrive')}
             className={`arcade-button action-b ${overdrive >= 100 ? 'charged' : ''}`} aria-label="B: Activate Overdrive"
             style={{ '--charge': `${overdrive}%` } as CSSProperties}>B</button><span className="control-caption">{active ? 'HYPER' : `${Math.round(overdrive)}%`}</span></div>
           <div className="system-buttons">

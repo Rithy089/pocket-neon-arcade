@@ -24,6 +24,7 @@ export function useArcadeInput(options: {
   enabled: boolean;
   onAction: (action: ArcadeAction) => void;
   onInterrupt: () => void;
+  allowDoubleTap?: () => boolean;
 }) {
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -33,6 +34,7 @@ export function useArcadeInput(options: {
   const [stick, setStick] = useState({ x: 0, y: 0 });
   const keys = useRef(new Set<string>());
   const stickPointer = useRef<number | null>(null);
+  const stickAxis = useRef({ x: 0, y: 0 });
   const actionPointers = useRef(new Set<number>());
   const gesture = useRef<{ id: number; x: number; y: number; time: number } | null>(null);
   const lastTap = useRef({ time: -1000, x: 0, y: 0 });
@@ -42,8 +44,20 @@ export function useArcadeInput(options: {
     stickPointer.current = null;
     actionPointers.current.clear();
     gesture.current = null;
+    stickAxis.current = { x: 0, y: 0 };
+    lastTap.current.time = -1000;
     state.current = { x: 0, y: 0, pointerX: null, firing: false };
     setStick({ x: 0, y: 0 });
+  }, []);
+
+  const updateKeys = useCallback(() => {
+    let x = 0, y = 0;
+    keys.current.forEach(code => {
+      if (directions[code]) { x += directions[code][0]; y += directions[code][1]; }
+    });
+    state.current.x = stickPointer.current !== null ? stickAxis.current.x : Math.max(-1, Math.min(1, x));
+    state.current.y = stickPointer.current !== null ? stickAxis.current.y : Math.max(-1, Math.min(1, y));
+    state.current.firing = keys.current.has('Space') || actionPointers.current.size > 0;
   }, []);
 
   const dispatch = useCallback((action: ArcadeAction) => {
@@ -57,15 +71,6 @@ export function useArcadeInput(options: {
   }, [options.enabled, reset]);
 
   useEffect(() => {
-    const updateKeys = () => {
-      let x = 0, y = 0;
-      keys.current.forEach(code => {
-        if (directions[code]) { x += directions[code][0]; y += directions[code][1]; }
-      });
-      state.current.x = Math.max(-1, Math.min(1, x));
-      state.current.y = Math.max(-1, Math.min(1, y));
-      state.current.firing = keys.current.has('Space') || actionPointers.current.size > 0;
-    };
     const down = (event: KeyboardEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
       if (!optionsRef.current.enabled || target?.closest('input, textarea, select, [contenteditable=true]')) return;
@@ -92,9 +97,10 @@ export function useArcadeInput(options: {
       window.removeEventListener('blur', interrupt);
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [dispatch, reset]);
+  }, [dispatch, reset, updateKeys]);
 
   const trackPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (stickPointer.current !== null) return;
     const rect = event.currentTarget.getBoundingClientRect();
     state.current.pointerX = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
   };
@@ -104,8 +110,10 @@ export function useArcadeInput(options: {
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       setMode(event.pointerType === 'touch' ? 'touch' : 'pointer');
-      keys.current.clear();
-      state.current.x = state.current.y = 0;
+      if (stickPointer.current === null) {
+        keys.current.clear();
+        updateKeys();
+      }
       trackPointer(event);
       gesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY, time: performance.now() };
       dispatch('fire');
@@ -125,19 +133,26 @@ export function useArcadeInput(options: {
       // Upward swipe or a quick double tap activates the tactical action.
       if (event.pointerType !== 'mouse' && now - start.time < 450) {
         if (dy < -45 && Math.abs(dy) > Math.abs(dx) * 1.3) dispatch('overdrive');
-        else if (Math.hypot(dx, dy) < 16) {
+        else if (Math.hypot(dx, dy) < 16 && optionsRef.current.allowDoubleTap?.() !== false) {
           const previous = lastTap.current;
           if (now - previous.time < 300 && Math.hypot(event.clientX - previous.x, event.clientY - previous.y) < 35) {
             dispatch('overdrive');
             lastTap.current.time = -1000;
           } else lastTap.current = { time: now, x: event.clientX, y: event.clientY };
-        }
+        } else lastTap.current.time = -1000;
       }
       gesture.current = null;
+      if (event.pointerType !== 'mouse') state.current.pointerX = null;
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     },
-    onPointerCancel() { gesture.current = null; state.current.pointerX = null; },
-    onLostPointerCapture() { gesture.current = null; },
+    onPointerCancel(event: ReactPointerEvent<HTMLCanvasElement>) {
+      if (gesture.current?.id !== event.pointerId) return;
+      gesture.current = null; state.current.pointerX = null;
+    },
+    onLostPointerCapture(event: ReactPointerEvent<HTMLCanvasElement>) {
+      if (gesture.current?.id !== event.pointerId) return;
+      gesture.current = null; state.current.pointerX = null;
+    },
     onPointerLeave(event: ReactPointerEvent<HTMLCanvasElement>) {
       if (!gesture.current && event.pointerType === 'mouse') state.current.pointerX = null;
     },
@@ -150,15 +165,16 @@ export function useArcadeInput(options: {
     let y = (event.clientY - rect.top - rect.height / 2) / (radius * .7);
     const length = Math.max(1, Math.hypot(x, y));
     x /= length; y /= length;
-    state.current.x = Math.abs(x) > .12 ? x : 0;
-    state.current.y = Math.abs(y) > .12 ? y : 0;
+    stickAxis.current = { x: Math.abs(x) > .12 ? x : 0, y: Math.abs(y) > .12 ? y : 0 };
+    updateKeys();
     state.current.pointerX = null;
     setStick({ x, y });
   };
   const releaseStick = (event: ReactPointerEvent<HTMLElement>) => {
     if (stickPointer.current !== event.pointerId) return;
     stickPointer.current = null;
-    state.current.x = state.current.y = 0;
+    stickAxis.current = { x: 0, y: 0 };
+    updateKeys();
     setStick({ x: 0, y: 0 });
   };
   const stickProps = {
@@ -184,7 +200,7 @@ export function useArcadeInput(options: {
   };
   const fireProps = {
     onPointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
-      if (!optionsRef.current.enabled) return;
+      if (!optionsRef.current.enabled || (event.pointerType === 'mouse' && event.button !== 0)) return;
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
       actionPointers.current.add(event.pointerId);
@@ -194,7 +210,15 @@ export function useArcadeInput(options: {
     onPointerUp: releaseFire, onPointerCancel: releaseFire, onLostPointerCapture: releaseFire,
     onClick(event: ReactMouseEvent<HTMLButtonElement>) { if (event.detail === 0) dispatch('fire'); },
   };
-  return { state, mode, stick, canvasProps, stickProps, fireProps, dispatch, reset };
+  const actionProps = (action: ArcadeAction) => ({
+    onPointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      event.preventDefault();
+      dispatch(action);
+    },
+    onClick(event: ReactMouseEvent<HTMLButtonElement>) { if (event.detail === 0) dispatch(action); },
+  });
+  return { state, mode, stick, canvasProps, stickProps, fireProps, actionProps, dispatch, reset };
 }
 
 export type ArcadeInput = ReturnType<typeof useArcadeInput>;

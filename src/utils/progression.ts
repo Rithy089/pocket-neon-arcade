@@ -8,6 +8,12 @@ import {
 import { PALETTES, PaletteId } from './themes';
 
 const SAVE_KEY = 'pocket_neon_save_v2';
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+const savedInteger = (value: unknown, fallback: number, maximum = Number.MAX_SAFE_INTEGER) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.min(maximum, Math.floor(value)) : fallback;
+const isChassis = (value: unknown): value is ChassisId =>
+  typeof value === 'string' && Object.prototype.hasOwnProperty.call(CHASSIS_CONFIGS, value);
 
 export const CHASSIS_CONFIGS: Record<ChassisId, ChassisConfig> = {
   vanguard: {
@@ -89,7 +95,7 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
   {
     id: 'cyber_hoarder',
     title: 'CYBER HOARDER',
-    description: 'Collect 100 Neon Shards in a single run',
+    description: 'Collect 100 Neon Coins in a single run',
     rewardShards: 120,
     iconName: 'Disc3',
   },
@@ -117,7 +123,7 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
   {
     id: 'gold_hunter',
     title: 'GOLDEN HUNTER',
-    description: 'Intercept a rare Gold Shard Carrier',
+    description: 'Intercept a rare Gold Coin Carrier',
     rewardShards: 150,
     iconName: 'CircleDot',
   },
@@ -197,28 +203,44 @@ export class ProgressionManager {
         this.saveData(initial);
         return initial;
       }
-      const parsed = JSON.parse(raw);
-      // Merge with default to guarantee new schema fields exist
-      const migrated: ProgressionData = {
-        ...defaults,
-        ...parsed,
-        schemaVersion: 3,
-        selectedPalette: Object.hasOwnProperty.call(PALETTES, parsed.selectedPalette) ? parsed.selectedPalette : 'tokyo',
-        palettesUnlocked: [...new Set<PaletteId>(['tokyo', ...(Array.isArray(parsed.palettesUnlocked) ? parsed.palettesUnlocked.filter((id: string) => Object.hasOwnProperty.call(PALETTES, id)) : [])])],
-        upgrades: {
-          ...defaults.upgrades,
-          ...(parsed.upgrades || {}),
-        },
-        chassisUnlocked: {
-          ...defaults.chassisUnlocked,
-          ...(parsed.chassisUnlocked || {}),
-        },
-        settings: {
-          ...defaults.settings,
-          ...(parsed.settings || {}),
-        },
-      };
-      if (!migrated.palettesUnlocked.includes(migrated.selectedPalette)) migrated.selectedPalette = 'tokyo';
+      const parsed = asRecord(JSON.parse(raw));
+      // Recover valid fields independently; one partial upgrade must not erase a wallet.
+      const migrated = defaults;
+      migrated.shards = savedInteger(parsed.shards, defaults.shards);
+      migrated.highScore = savedInteger(parsed.highScore, defaults.highScore);
+      const savedUpgrades = asRecord(parsed.upgrades);
+      for (const key of Object.keys(migrated.upgrades) as Array<keyof ProgressionData['upgrades']>) {
+        const upgrade = migrated.upgrades[key];
+        upgrade.tier = savedInteger(asRecord(savedUpgrades[key]).tier, 0, upgrade.maxTier);
+        // Prices and tier limits always come from the current game, never the save.
+      }
+      const savedUnlocks = asRecord(parsed.chassisUnlocked);
+      for (const id of ['phantom', 'titan'] as const) migrated.chassisUnlocked[id] = savedUnlocks[id] === true;
+      migrated.selectedChassis = isChassis(parsed.selectedChassis) && migrated.chassisUnlocked[parsed.selectedChassis] ? parsed.selectedChassis : 'vanguard';
+      const paletteIds = Array.isArray(parsed.palettesUnlocked) ? parsed.palettesUnlocked.filter((id): id is PaletteId => typeof id === 'string' && Object.prototype.hasOwnProperty.call(PALETTES, id)) : [];
+      migrated.palettesUnlocked = [...new Set<PaletteId>(['tokyo', ...paletteIds])];
+      migrated.selectedPalette = migrated.palettesUnlocked.includes(parsed.selectedPalette as PaletteId) ? parsed.selectedPalette as PaletteId : 'tokyo';
+      const savedSettings = asRecord(parsed.settings);
+      for (const key of ['crtEnabled', 'soundFxEnabled', 'synthBgmEnabled', 'masterMuted', 'hapticsEnabled'] as const) {
+        if (typeof savedSettings[key] === 'boolean') migrated.settings[key] = savedSettings[key];
+      }
+      if (savedSettings.bloomMode === 'high' || savedSettings.bloomMode === 'performance' || savedSettings.bloomMode === 'off') migrated.settings.bloomMode = savedSettings.bloomMode;
+      migrated.achievements = Object.fromEntries(Object.entries(asRecord(parsed.achievements)).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'));
+      if (Array.isArray(parsed.highScoreEntries)) {
+        migrated.highScoreEntries = parsed.highScoreEntries.flatMap((value, index): LeaderboardEntry[] => {
+          const entry = asRecord(value);
+          if (typeof entry.score !== 'number' || !Number.isFinite(entry.score) || entry.score < 0) return [];
+          return [{
+            id: typeof entry.id === 'string' ? entry.id : 'saved-' + index,
+            initials: (typeof entry.initials === 'string' ? entry.initials : 'AAA').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3).padEnd(3, 'A'),
+            score: savedInteger(entry.score, 0),
+            wave: Math.max(1, savedInteger(entry.wave, 1)),
+            chassis: isChassis(entry.chassis) ? entry.chassis : 'vanguard',
+            date: typeof entry.date === 'string' ? entry.date : '1970-01-01',
+          }];
+        }).sort((left, right) => right.score - left.score).slice(0, 5);
+      }
+      migrated.highScore = Math.max(migrated.highScore, ...migrated.highScoreEntries.map(entry => entry.score));
       this.saveData(migrated);
       return migrated;
     } catch {
@@ -240,13 +262,13 @@ export class ProgressionManager {
   }
 
   public addShards(amount: number): number {
-    this.data.shards += Math.max(0, amount);
+    this.data.shards += savedInteger(amount, 0);
     this.saveData(this.data);
     return this.data.shards;
   }
 
   public spendShards(amount: number): boolean {
-    if (this.data.shards >= amount) {
+    if (Number.isSafeInteger(amount) && amount >= 0 && this.data.shards >= amount) {
       this.data.shards -= amount;
       this.saveData(this.data);
       return true;
@@ -315,6 +337,15 @@ export class ProgressionManager {
     this.data.shards += ach.rewardShards;
     this.saveData(this.data);
     return { unlocked: true, achievement: ach };
+  }
+
+  public recordHighScore(score: number): number {
+    const best = savedInteger(score, this.data.highScore);
+    if (best > this.data.highScore) {
+      this.data.highScore = best;
+      this.saveData(this.data);
+    }
+    return this.data.highScore;
   }
 
   public isTopScore(score: number): boolean {

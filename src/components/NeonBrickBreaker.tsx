@@ -79,6 +79,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
   const [barrierActive, setBarrierActive] = useState<boolean>(false);
   const [waveBanner, setWaveBanner] = useState<{ title: string; subtitle: string; isBoss: boolean } | null>(null);
   const [waveGraceSeconds, setWaveGraceSeconds] = useState<number>(0);
+  const [waveClearBonus, setWaveClearBonus] = useState(0);
   const [bossHp, setBossHp] = useState<{ current: number; max: number; name: string } | null>(null);
 
   const [activePowerUps, setActivePowerUps] = useState<{
@@ -130,6 +131,8 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     // Barrier Floor
     barrierFloorActive: boolean;
     hasEmergencyBarrierUpgrade: boolean;
+
+    waveTransitionRemaining: number;
 
     // Timers
     powerUpTimers: {
@@ -188,6 +191,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     barrierFloorActive: false,
     hasEmergencyBarrierUpgrade: false,
 
+    waveTransitionRemaining: 0,
     powerUpTimers: { laser: 0, widePaddle: 0, slowMotion: 0 },
   });
 
@@ -315,7 +319,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
   // Activate Overdrive Hyper-State
   const triggerOverdrive = useCallback(() => {
     const s = stateRef.current;
-    if (s.overdriveMeter < 100 || s.isOverdriveActive) return;
+    if (s.gameState !== 'PLAYING' || s.overdriveMeter < 100 || s.isOverdriveActive) return;
 
     s.overdriveMeter = 0;
     setOverdriveMeter(0);
@@ -342,9 +346,11 @@ export const NeonBrickBreaker: React.FC<Props> = ({
   const initWave = useCallback((targetWave: number, keepStats = false) => {
     const s = stateRef.current;
     const progData = progression.getData();
-    const selectedChassisId = progData.selectedChassis;
+    const selectedChassisId = keepStats ? s.paddle.chassis : progData.selectedChassis;
     const chassisCfg = CHASSIS_CONFIGS[selectedChassisId];
 
+    s.waveTransitionRemaining = 0;
+    setWaveGraceSeconds(0);
     s.wave = targetWave;
     setWave(targetWave);
 
@@ -359,6 +365,8 @@ export const NeonBrickBreaker: React.FC<Props> = ({
 
     if (!keepStats) {
       s.score = 0;
+      s.maxCombo = 0;
+      s.overdriveTimer = 0;
       s.lives = 3 + chassisCfg.bonusLives;
       s.runShards = 0;
       s.totalBricksCleared = 0;
@@ -367,6 +375,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
       s.overdriveMeter = 0;
       s.isOverdriveActive = false;
       setScore(0);
+      callbacksRef.current.onScoreUpdate(0);
       setLives(s.lives);
       setRunShards(0);
       setOverdriveMeter(0);
@@ -484,20 +493,24 @@ export const NeonBrickBreaker: React.FC<Props> = ({
 
   // Restart Game
   const restartGame = useCallback(() => {
+    soundManager.stopBgm();
     soundManager.playCoin();
     initWave(1, false);
+    return () => soundManager.stopBgm();
   }, [initWave]);
 
   // Toggle Pause
+  const pausedFrom = useRef<'PLAYING' | 'WAVE_TRANSITION'>('PLAYING');
   const togglePause = useCallback(() => {
     const s = stateRef.current;
-    if (s.gameState === 'PLAYING') {
+    if (s.gameState === 'PLAYING' || s.gameState === 'WAVE_TRANSITION') {
+      pausedFrom.current = s.gameState;
       s.gameState = 'PAUSED';
       setGameState('PAUSED');
       soundManager.stopBgm();
     } else if (s.gameState === 'PAUSED') {
-      s.gameState = 'PLAYING';
-      setGameState('PLAYING');
+      s.gameState = pausedFrom.current;
+      setGameState(pausedFrom.current);
       soundManager.startBgm();
     }
   }, []);
@@ -509,16 +522,17 @@ export const NeonBrickBreaker: React.FC<Props> = ({
 
   const pauseForInterruption = useCallback(() => {
     soundManager.stopBgm();
-    if (stateRef.current.gameState === 'PLAYING') togglePause();
+    if (stateRef.current.gameState === 'PLAYING' || stateRef.current.gameState === 'WAVE_TRANSITION') togglePause();
   }, [togglePause]);
 
   const input = useArcadeInput({
     enabled: !isObscured,
+    allowDoubleTap: () => !stateRef.current.paddle.laserMode && !stateRef.current.isOverdriveActive,
     onAction: (action) => {
       if (action === 'fire') fireLaserOrLaunch();
       else if (action === 'overdrive') triggerOverdrive();
       else if (action === 'pause') togglePause();
-      else if (action === 'restart') restartGame();
+      else if (action === 'restart') { input.reset(); restartGame(); }
     },
     onInterrupt: pauseForInterruption,
   });
@@ -545,18 +559,29 @@ export const NeonBrickBreaker: React.FC<Props> = ({
     let animationFrameId: number;
     const glow = (amount: number) => settings.bloomMode === 'off' ? 0 : settings.bloomMode === 'performance' ? Math.min(4, amount) : amount;
     let lastTime = performance.now();
+    let publishedScore = -1;
+    let publishedBuffs = { laser: -1, widePaddle: -1, slowMotion: -1, overdrive: -1 };
 
-    const loop = (currentTime: number) => {
+    const loop = (currentTime: number, render: boolean) => {
       const dt = Math.min((currentTime - lastTime) / 1000, 0.05);
       lastTime = currentTime;
 
       const s = stateRef.current;
       const progData = progression.getData();
 
+      const simulationActive = !obscuredRef.current && !document.hidden;
+      if (s.gameState === 'WAVE_TRANSITION' && simulationActive) {
+        const previousSeconds = Math.ceil(s.waveTransitionRemaining);
+        s.waveTransitionRemaining = Math.max(0, s.waveTransitionRemaining - dt);
+        const seconds = Math.ceil(s.waveTransitionRemaining);
+        if (seconds !== previousSeconds) setWaveGraceSeconds(seconds);
+        if (s.waveTransitionRemaining <= 0) initWave(s.wave + 1, true);
+      }
+
       // Check Hit Stop (Physics pause during critical impacts)
       if (s.hitStopTimer > 0) {
         s.hitStopTimer -= dt;
-      } else if (s.gameState === 'PLAYING' && !obscuredRef.current) {
+      } else if (s.gameState === 'PLAYING' && simulationActive) {
         // --- 1. Paddle Movement ---
         const controls = inputState.current;
         const frame = dt * 60;
@@ -628,12 +653,16 @@ export const NeonBrickBreaker: React.FC<Props> = ({
           s.powerUpTimers.slowMotion -= dt;
         }
 
-        setActivePowerUps({
+        const buffs = {
           laser: Math.max(0, Math.ceil(s.powerUpTimers.laser)),
           widePaddle: Math.max(0, Math.ceil(s.powerUpTimers.widePaddle)),
           slowMotion: Math.max(0, Math.ceil(s.powerUpTimers.slowMotion)),
           overdrive: Math.max(0, Math.ceil(s.overdriveTimer)),
-        });
+        };
+        if (buffs.laser !== publishedBuffs.laser || buffs.widePaddle !== publishedBuffs.widePaddle || buffs.slowMotion !== publishedBuffs.slowMotion || buffs.overdrive !== publishedBuffs.overdrive) {
+          publishedBuffs = buffs;
+          setActivePowerUps(buffs);
+        }
 
         // --- 5. Laser Projectiles ---
         for (let i = s.lasers.length - 1; i >= 0; i--) {
@@ -874,40 +903,42 @@ export const NeonBrickBreaker: React.FC<Props> = ({
             node.angle += dt * 1.5;
           });
 
-          // Telegraph Laser Attack
-          b.laserWarningTimer -= dt;
-          if (b.laserWarningTimer <= 0) {
-            b.laserFiringTimer = 1.2; // Fire laser for 1.2s
-            b.laserWarningTimer = 4.5;
-            b.laserX = b.x + b.width / 2;
-            soundManager.playLaser(true);
-            triggerShake(8);
-          }
-
-          if (b.laserFiringTimer > 0) {
-            b.laserFiringTimer -= dt;
-            // Check if player paddle intersects the boss laser beam
-            const beamLeft = b.laserX - b.laserWidth / 2;
-            const beamRight = b.laserX + b.laserWidth / 2;
-            if (s.paddle.x + s.paddle.width >= beamLeft && s.paddle.x <= beamRight) {
-              // Paddle hit by boss laser!
-              handleLoseLife();
+          if (b.hp > 0) {
+            // Telegraph Laser Attack
+            b.laserWarningTimer -= dt;
+            if (b.laserWarningTimer <= 0) {
+              b.laserFiringTimer = 1.2; // Fire laser for 1.2s
+              b.laserWarningTimer = 4.5;
+              b.laserX = b.x + b.width / 2;
+              soundManager.playLaser(true);
+              triggerShake(8);
             }
-          }
 
-          // Periodic homing hazard orbs
-          b.attackCooldown -= dt;
-          if (b.attackCooldown <= 0) {
-            b.attackCooldown = 3.2;
-            s.bossHazards.push({
-              id: `hz-${Math.random()}`,
-              x: b.x + b.width / 2,
-              y: b.y + b.height,
-              vx: (s.paddle.x + s.paddle.width / 2 - (b.x + b.width / 2)) * 0.005,
-              vy: 2.8,
-              radius: 9,
-              color: '#ff007f',
-            });
+            if (b.laserFiringTimer > 0) {
+              b.laserFiringTimer -= dt;
+              // Check if player paddle intersects the boss laser beam
+              const beamLeft = b.laserX - b.laserWidth / 2;
+              const beamRight = b.laserX + b.laserWidth / 2;
+              if (s.paddle.x + s.paddle.width >= beamLeft && s.paddle.x <= beamRight) {
+                // Paddle hit by boss laser!
+                handleLoseLife();
+              }
+            }
+
+            // Periodic homing hazard orbs
+            b.attackCooldown -= dt;
+            if (s.gameState === 'PLAYING' && b.attackCooldown <= 0) {
+              b.attackCooldown = 3.2;
+              s.bossHazards.push({
+                id: `hz-${Math.random()}`,
+                x: b.x + b.width / 2,
+                y: b.y + b.height,
+                vx: (s.paddle.x + s.paddle.width / 2 - (b.x + b.width / 2)) * 0.005,
+                vy: 2.8,
+                radius: 9,
+                color: '#ff007f',
+              });
+            }
           }
 
           // Check Boss Defeat
@@ -925,6 +956,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
             callbacksRef.current.onScoreUpdate(s.score);
             callbacksRef.current.onTriggerAchievementToast('boss_slayer');
             s.boss = null;
+            s.bossHazards = [];
             setBossHp(null);
           }
         }
@@ -945,7 +977,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
             spawnParticles(hz.x, hz.y, hz.color, 16);
             s.bossHazards.splice(i, 1);
             handleLoseLife();
-            continue;
+            break;
           }
 
           if (hz.y > CANVAS_HEIGHT) {
@@ -1122,6 +1154,20 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         }
       }
 
+      // Evaluate completion independently of which target (brick or boss) died last.
+      if (s.gameState === 'PLAYING' && simulationActive && s.bricks.length === 0 && !s.boss) handleWaveClear();
+      if (s.score !== publishedScore) {
+        publishedScore = s.score;
+        setScore(s.score);
+        callbacksRef.current.onScoreUpdate(s.score);
+        if (s.score > s.highScore) {
+          s.highScore = progression.recordHighScore(s.score);
+          setHighScore(s.highScore);
+          callbacksRef.current.onHighScoreUpdate(s.highScore);
+        }
+        if (s.score >= 50000) callbacksRef.current.onTriggerAchievementToast('arcade_legend');
+      }
+
       // Helper: Destroy Brick
       function destroyBrick(brick: Brick) {
         s.combo++;
@@ -1140,16 +1186,6 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         s.score += pointsEarned;
         setScore(s.score);
         callbacksRef.current.onScoreUpdate(s.score);
-
-        if (s.score > s.highScore) {
-          s.highScore = s.score;
-          setHighScore(s.score);
-          callbacksRef.current.onHighScoreUpdate(s.score);
-        }
-
-        if (s.score >= 50000) {
-          callbacksRef.current.onTriggerAchievementToast('arcade_legend');
-        }
 
         addOverdriveCharge(4 * overdriveBonus);
 
@@ -1213,10 +1249,6 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         // Remove destroyed bricks cleanly by ID
         s.bricks = s.bricks.filter((b) => !destroyedIds.has(b.id));
 
-        // Check Wave Clear (All bricks gone AND no active boss)
-        if (s.bricks.length === 0 && !s.boss) {
-          handleWaveClear();
-        }
       }
 
       function spawnPowerUp(x: number, y: number, type: PowerUpType) {
@@ -1241,6 +1273,14 @@ export const NeonBrickBreaker: React.FC<Props> = ({
       }
 
       function handleLoseLife() {
+        // Several hazards can overlap in one frame. Only the active life can be lost.
+        if (s.gameState !== 'PLAYING') return;
+        s.bossHazards = [];
+        if (s.boss) {
+          s.boss.laserFiringTimer = 0;
+          s.boss.laserWarningTimer = Math.max(2, s.boss.laserWarningTimer);
+        }
+        soundManager.stopBgm();
         s.lives--;
         s.livesLostThisRun++;
         setLives(s.lives);
@@ -1286,6 +1326,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
       }
 
       function handleWaveClear() {
+        if (s.gameState !== 'PLAYING') return;
         soundManager.playLevelClear();
         triggerShake(10);
         addShockwave(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, '#39ff14', 220);
@@ -1295,9 +1336,10 @@ export const NeonBrickBreaker: React.FC<Props> = ({
           callbacksRef.current.onTriggerAchievementToast('untouchable');
         }
 
-        // Speed clear bonus
-        const waveClearBonus = 1500 + s.lives * 500;
-        s.score += waveClearBonus;
+        // Wave clear bonus
+        const bonus = 1500 + s.lives * 500;
+        s.score += bonus;
+        setWaveClearBonus(bonus);
         setScore(s.score);
         callbacksRef.current.onScoreUpdate(s.score);
 
@@ -1306,11 +1348,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         setGameState('WAVE_TRANSITION');
         setWaveGraceSeconds(2);
 
-        setTimeout(() => {
-          if (stateRef.current.gameState === 'WAVE_TRANSITION') {
-            initWave(s.wave + 1, true);
-          }
-        }, 2200);
+        s.waveTransitionRemaining = 2;
       }
 
       // Update Kinetic VFX Particles
@@ -1370,6 +1408,8 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         s.shake *= 0.86;
         if (s.shake < 0.2) s.shake = 0;
       }
+
+      if (!render) return;
 
       // --- RENDERING PIPELINE ---
       ctx.save();
@@ -1744,10 +1784,30 @@ export const NeonBrickBreaker: React.FC<Props> = ({
 
       ctx.restore(); // Restore camera shake
 
-      animationFrameId = requestAnimationFrame(loop);
     };
 
-    animationFrameId = requestAnimationFrame(loop);
+    // Preserve the original 60 Hz collision increments on every display refresh rate.
+    const stepMs = 1000 / 60;
+    let previousFrame = performance.now();
+    let simulationTime = lastTime;
+    let accumulated = 0;
+    const animate = (timestamp: number) => {
+      const elapsed = Math.max(0, Math.min(timestamp - previousFrame, 100));
+      previousFrame = timestamp;
+      if (document.hidden) accumulated = 0;
+      else {
+        accumulated += elapsed;
+        const steps = Math.min(5, Math.floor((accumulated + 1e-8) / stepMs));
+        for (let i = 0; i < steps; i++) {
+          simulationTime += stepMs;
+          loop(simulationTime, i === steps - 1);
+        }
+        accumulated = Math.max(0, accumulated - steps * stepMs);
+        if (steps === 5) accumulated = 0; // Bound catch-up after a stalled tab.
+      }
+      animationFrameId = requestAnimationFrame(animate);
+    };
+    animationFrameId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animationFrameId);
   }, [settings.bloomMode, inputState, fireLaserOrLaunch]);
 
@@ -1925,7 +1985,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
               <div className="font-pixel text-base text-neon-green mb-1">WAVE CLEARED!</div>
               <p className="font-mono text-xs text-slate-300 mb-3">Next frequency inbound in {waveGraceSeconds}s...</p>
               <div className="text-[10px] font-pixel text-neon-yellow animate-pulse">
-                +1,500 SPEED CLEAR BONUS
+                +{waveClearBonus.toLocaleString()} WAVE CLEAR BONUS
               </div>
             </div>
           </div>
@@ -1979,7 +2039,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
                   <span className="text-base text-neon-cyan">{wave}</span>
                 </div>
                 <div>
-                  <span className="text-[9px] text-slate-400 block mb-1 font-mono">SHARDS</span>
+                  <span className="text-[9px] text-slate-400 block mb-1 font-mono">COINS</span>
                   <span className="text-base text-neon-green">+{runShards}</span>
                 </div>
               </div>
@@ -2011,7 +2071,7 @@ export const NeonBrickBreaker: React.FC<Props> = ({
         )}
       </div>
 
-      <ArcadeControls input={input} disabled={isObscured} overdrive={overdriveMeter} active={isOverdriveActive} />
+      <ArcadeControls input={input} disabled={isObscured} overdrive={overdriveMeter} active={isOverdriveActive} playing={gameState === 'PLAYING'} />
     </div>
   );
 };

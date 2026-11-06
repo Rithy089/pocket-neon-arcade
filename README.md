@@ -5,9 +5,10 @@ A responsive React + TypeScript arcade built with Vite, Tailwind CSS, HTML5 Canv
 ## Play
 
 - PC: A/D or Left/Right move the paddle; mouse tracking also works. Space launches and fires, Shift/E activates Overdrive, P/Esc pauses, and R restarts.
-- Touch: drag anywhere on the playfield or use the thumbstick. A launches/fires; B activates a charged Overdrive. Swipe up or double tap the playfield for Overdrive.
+- Touch: drag anywhere on the playfield or use the thumbstick. A launches/fires; B activates a charged Overdrive. Swipe up for Overdrive. Double tap also activates it when laser and Hyper-State rapid fire are inactive.
 - Hold A or Space to keep firing while laser power is active. Independent touch pointers support moving and shooting together.
-- Menus and focus loss pause active gameplay. Closing a menu leaves the run paused until you resume.
+- Menus and focus loss pause active gameplay and wave countdowns. Closing a menu leaves the run paused until you resume.
+- Chassis selections equip on your next run; barrier upgrades recharge next wave. Other core upgrades apply when you resume.
 
 ## Features
 
@@ -39,7 +40,7 @@ Existing balances, upgrades, achievements and leaderboard entries migrate to sch
 
 ## Verification
 
-npm test runs isolated store regressions for save migration, palette transactions, upgrade behavior, leaderboard initials and blocked storage.
+npm test runs store regressions for save migration, palette transactions, partial-save recovery, skipped initials and blocked storage. It also executes the real game loop with React/Canvas/audio adapters to check both boss-clear orders, damage/respawn, countdown pause/restart/unmount, chassis timing, and identical movement at 30/60/120 Hz. Collision algorithms remain in the game component; no production test hooks are added.
 
 For input lifecycle checks, start the dev server, open an arcade menu to suspend the live game's inputs, then run this in the browser console:
 
@@ -47,4 +48,4 @@ For input lifecycle checks, start the dev server, open an arcade menu to suspend
 
 The browser fixture mounts the real hook in a disposable React root and verifies keyboard overlap, held fire, blur recovery, disabled input, normalized pointer coordinates, swipe/double tap, simultaneous touch controls and cancellation. Pointer capture is mocked only in that fixture; real-device haptic feedback and physical multitouch should also be checked on target hardware.
 
-Target layout sizes: mobile 390?844 and desktop 1920?1080.
+Target layout sizes: mobile 390x844 and desktop 1920x1080.
