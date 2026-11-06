@@ -145,6 +145,49 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 2px s
 .performance-mode .status-dot { box-shadow: none; }
 .bloom-off .game-screen, .bloom-off .game-screen * { box-shadow: none !important; text-shadow: none !important; }
 @media (min-width: 1600px) { .arcade-layout { max-width: 1240px; } }
+/* Desktop uses a side control rail so the arena can fill the available height. */
+@media (min-width: 901px) {
+  .site-header { height: 64px; max-width: 1720px; }
+  .arcade-layout { max-width: 1720px; margin: 18px auto; grid-template-columns: minmax(240px, 340px) minmax(0, 1fr); gap: clamp(24px, 4vw, 72px); align-items: start; }
+  .arcade-intro { align-self: center; }
+  .cabinet { width: min(100%, calc((100svh - 240px) * .8889 + 164px)); }
+  .game-module { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 16px; max-width: none; align-items: start; }
+  .cabinet-scoreboard small { font-size: 10px; }
+  .cabinet-scoreboard strong { font-size: 24px; }
+  .control-deck { display: flex; flex-direction: column-reverse; justify-content: space-between; height: 100%; min-height: 0; padding: 12px 0 12px 16px; border-left: 1px solid #ffffff12; }
+  .control-row { flex-direction: column; padding-top: 0; gap: 24px; }
+  .deck-center { display: none; }
+  .action-cluster { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 16px 10px; }
+  .system-buttons { grid-column: 1 / -1; width: 100%; margin-left: 0; }
+  .system-buttons button { min-height: 44px; font-size: 10px; }
+  .control-caption { font-size: 10px; }
+  .control-hints { display: block; font-size: 11px; line-height: 2.3; text-align: left; color: #91a2bd; }
+  .control-hints > .status-dot { display: none; }
+  .game-hud .hud-lives { font-size: 12px; }
+  .hud-lives > span { font-size: 10px; }
+  .game-hud .hud-wave, .game-hud .hud-wallet { font-size: 12px; }
+  .hud-overdrive .w-20 { width: 92px; }
+  .hud-overdrive .flex.justify-between { font-size: 10px; }
+  .site-footer { display: none; }
+}
+@media (min-width: 901px) and (max-width: 1199px) {
+  .arcade-shell { padding: 0 24px; }
+  .arcade-layout { grid-template-columns: 220px minmax(0, 1fr); gap: 24px; }
+  .arcade-intro h1 { font-size: 32px; }
+  .game-card { padding: 12px; gap: 10px; }
+  .game-card h2 { font-size: 18px; }
+}
+@media (min-width: 901px) and (max-height: 900px) {
+  .arcade-intro .game-card, .arcade-intro .session-tip { display: none; }
+  .arcade-intro h1 { margin: 16px 0; }
+  .arcade-intro > p { font-size: 14px; line-height: 1.6; }
+}
+@media (min-width: 901px) and (max-height: 760px) {
+  .control-hints { display: none; }
+  .control-row { gap: 16px; }
+  .thumbstick { width: 64px; height: 64px; }
+  .stick-cap { width: 32px; height: 32px; }
+}
 @media (max-width: 900px) {
   .arcade-shell { padding: 0 16px; }
   .site-header { height: 64px; }
